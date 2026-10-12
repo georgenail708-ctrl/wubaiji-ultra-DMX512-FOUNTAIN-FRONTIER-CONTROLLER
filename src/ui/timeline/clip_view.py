@@ -1687,6 +1687,9 @@ class ClipView(QWidget):
                 self._items[clip.id] = item
             else:
                 item = self._items[clip.id]
+                if item._clip is not clip:
+                    item._waveform_cache_key = None
+                    item._waveform_cache_bars = None
                 item._clip = clip
                 item._track = self._track
                 if not getattr(item, "_is_dragging", False):

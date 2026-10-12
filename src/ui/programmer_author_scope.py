@@ -5,11 +5,13 @@ their historical target union; only project save/load carries this editor scope.
 """
 from __future__ import annotations
 
+from .programmer_joystick_state import capture_controls, restore_controls
 from .programmer_project_capture import capture_project_history
 
 
 def capture_editor_scope(panel, state: dict) -> dict:
     saved = capture_project_history(panel, state)
+    saved["joystick_controls"] = capture_controls(panel)
     saved["editor_scope"] = {
         "version": 1,
         "fixture_ids": list(panel.get_live_selected_fixture_ids() or []),
@@ -86,13 +88,16 @@ def restore_editor_state(panel, state: dict | None) -> bool:
         return False
     scope = _saved_scope(state)
     if scope is None:
-        return _restore_legacy(panel, state)
+        restored = _restore_legacy(panel, state)
+        restore_controls(panel, state.get("joystick_controls"))
+        return restored
     previous = getattr(panel, "_suppress_topview_selection_emit", False)
     restored = False
     panel._suppress_topview_selection_emit = True
     try:
         _restore_legacy(panel, state)
         _restore_author(panel, scope)
+        restore_controls(panel, state.get("joystick_controls"))
         restored = True
     except Exception:
         return False

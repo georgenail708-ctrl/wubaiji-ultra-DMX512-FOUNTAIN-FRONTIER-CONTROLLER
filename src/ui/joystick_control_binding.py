@@ -95,18 +95,28 @@ BORDER    = _J_BORDER        # #3D3D3D 描边
 #  辅助函数
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _s_curve_value(normalized: float, range_lo: float = 0.0, range_hi: float = 1.0) -> float:
+    """按映射弹窗的固定 S 预设插值；先缩放描点，保持最终整数舍入与预览一致。"""
+    v = max(0.0, min(1.0, normalized))
+    lo, hi = float(range_lo), float(range_hi)
+    points = ((0.0, lo), (0.25, lo + (hi - lo) * 0.1),
+              (0.5, lo + (hi - lo) * 0.5), (0.75, lo + (hi - lo) * 0.9),
+              (1.0, hi))
+    for (x0, y0), (x1, y1) in zip(points, points[1:], strict=False):
+        if x0 <= v <= x1:
+            t = (v - x0) / (x1 - x0)
+            return y0 + t * (y1 - y0)
+    return hi
+
+
 def _apply_curve(normalized: float, curve: str, gamma: float = 1.0, steps: int = 8) -> float:
     """将 0.0-1.0 归一化输入应用曲线映射，返回 0.0-1.0。"""
     v = max(0.0, min(1.0, normalized))
     if curve == "gamma":
         v = v ** max(0.1, gamma)
     elif curve == "s_curve":
-        if v < 0.5:
-            v = 2.0 * (v ** max(0.1, gamma))
-        else:
-            v = 1.0 - 2.0 * ((1.0 - v) ** max(0.1, gamma))
-        v = max(0.0, min(1.0, v / 2.0 if v < 0.5 else 0.5 + (v - 1.0) / -2.0))
-        v = max(0.0, min(1.0, v))
+        # S 预设在 UI 中不使用 gamma；形状由固定描点定义。
+        v = _s_curve_value(v)
     elif curve == "stepped":
         s = max(2, steps)
         v = math.floor(v * s) / (s - 1)
@@ -390,8 +400,11 @@ class JoystickControlBindManager(QObject):
             else:
                 continue
             norm = _normalize_axis(raw, rule.deadzone, rule.invert)
-            curved = _apply_curve(norm, rule.curve, rule.gamma, rule.steps)
-            mapped = int(round(rule.range_lo + curved * (rule.range_hi - rule.range_lo)))
+            if rule.curve == "s_curve":
+                mapped = int(round(_s_curve_value(norm, rule.range_lo, rule.range_hi)))
+            else:
+                curved = _apply_curve(norm, rule.curve, rule.gamma, rule.steps)
+                mapped = int(round(rule.range_lo + curved * (rule.range_hi - rule.range_lo)))
             if rule.target_kind == "effect_param":
                 # effect 参数绑定可以超过 DMX 0-255(如跑动编排滑块内部 0-1000)
                 mapped = max(rule.range_lo, min(rule.range_hi, mapped))

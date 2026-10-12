@@ -527,6 +527,9 @@ class BindingMappingDialog(QDialog):
 
     def _on_range_changed(self):
         """输出范围变化时更新曲线端点Y值。"""
+        if self._curve_cb.currentData() == "s_curve":
+            self._on_curve_preset()
+            return
         lo = float(self._range_lo.value())
         hi = float(self._range_hi.value())
         pts = self._curve_editor.get_points()
@@ -545,7 +548,10 @@ class BindingMappingDialog(QDialog):
         # 跳过死区直接在编辑器上评估（曲线编辑器已包含完整的输入-输出映射）
         mapped = int(round(editor.evaluate(test_input)))
         if getattr(self._rule, "target_kind", "") == "effect_param":
-            mapped = max(self._rule.range_lo, min(self._rule.range_hi, mapped))
+            if self._curve_cb.currentData() == "s_curve":
+                mapped = max(self._range_lo.value(), min(self._range_hi.value(), mapped))
+            else:
+                mapped = max(self._rule.range_lo, min(self._rule.range_hi, mapped))
         else:
             mapped = max(0, min(255, mapped))
         self._preview_bar.setValue(int(test_input * 100))

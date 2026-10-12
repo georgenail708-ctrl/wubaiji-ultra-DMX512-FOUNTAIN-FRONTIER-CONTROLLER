@@ -5689,6 +5689,8 @@ class MainWindow(QMainWindow):
                             w.link_timeline_audio(_existing)
                 except Exception:
                     pass
+                # The project can be opened before this dock is first created.
+                w.load_state(getattr(getattr(self._pm, "project", None), "matrix_slideshow_state", None))
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).warning(

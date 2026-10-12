@@ -6949,6 +6949,7 @@ class EffectBrowserWidget(QWidget):
         try:
             seq = QKeySequence(int(self._slice_key) | int(self._slice_key_modifiers or 0))
             shortcut = QShortcut(seq, self)
+            shortcut.setAutoRepeat(False)
             shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             shortcut.activated.connect(self._on_slice_shortcut_activated)
             self._slice_shortcut = shortcut

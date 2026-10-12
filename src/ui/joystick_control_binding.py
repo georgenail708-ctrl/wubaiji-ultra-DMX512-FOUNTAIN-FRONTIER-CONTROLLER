@@ -188,7 +188,9 @@ class JoystickControlBindingRule:
 
     @property
     def binding_key(self) -> Tuple[str, str]:
-        """复合唯一键：(ch_type, space_mode)。"""
+        """复合唯一键：effect 参数按通道+参数，其余按 (ch_type, space_mode)。"""
+        if self.target_kind == "effect_param":
+            return (f"effect:{self.channel or ''}:{self.param_key}", "")
         return (self.ch_type, self.space_mode)
 
     @property

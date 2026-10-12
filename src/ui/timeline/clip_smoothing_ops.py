@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import QMessageBox
 from ...engine.clip_smoothing import commit_smoothing, prepare_smoothing
 
 
-def apply_smoothing(widget, clip_id, preset_id, custom=None):
+def apply_smoothing(widget, clip_id, preset_id, custom=None, *, show_success=True):
     """共用真实入口；准备全组成功后才拍快照和提交。"""
     target_ids = widget._resolve_context_clip_ids(clip_id)
     prepared = []
@@ -23,7 +23,9 @@ def apply_smoothing(widget, clip_id, preset_id, custom=None):
         commit_smoothing(clip, change)
     widget._refresh_clips_targeted([cid for cid, _, _ in prepared], reset_waveform=True)
     widget._mark_project_dirty()
-    name = prepared[0][2].preset_name
-    action = f"应用预设「{name}」" if name else "恢复未处理录制"
-    QMessageBox.information(widget, "平滑处理", f"已对 {len(prepared)} 个 Clip {action}。")
+    # Automatic Studio updates may skip success feedback, never error warnings.
+    if show_success:
+        name = prepared[0][2].preset_name
+        action = f"应用预设「{name}」" if name else "恢复未处理录制"
+        QMessageBox.information(widget, "平滑处理", f"已对 {len(prepared)} 个 Clip {action}。")
     return True

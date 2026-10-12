@@ -51,9 +51,10 @@ def apply(context):
 
 
 def _invoke(context, preset, custom):
+    # Studio's debounced application reports success in the panel, not a modal.
     if custom is None:
-        return context.tw._on_clip_auto_smooth(context.cid, preset)
-    return context.tw._on_clip_auto_smooth(context.cid, preset, dict(custom))
+        return context.tw._on_clip_auto_smooth(context.cid, preset, show_success=False)
+    return context.tw._on_clip_auto_smooth(context.cid, preset, dict(custom), show_success=False)
 
 
 def _custom_matches(context, preset, custom):

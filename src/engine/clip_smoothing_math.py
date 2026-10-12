@@ -7,6 +7,8 @@ https://github.com/scipy/scipy/blob/v1.17.1/scipy/signal/_peak_finding.py
 时间重采样、有效通道过滤和录制关键点保全是本项目适配。此离线实现不改
 网络 OutputSmoother 或 CE 的实时输出合同，不声称验证了物理设备响应。
 """
+from itertools import pairwise
+
 import numpy as np
 from scipy.interpolate import PchipInterpolator
 from scipy.signal import find_peaks, savgol_filter
@@ -139,6 +141,28 @@ def _shape_target(times, values, filtered, fixed, preset):
     return target
 
 
+def _preserve_motor_direction(times, values, output, fixed, context):
+    """Discard filter ringing only where it reverses an authored monotone segment."""
+    preset, strength, scale = context
+    anchors = np.flatnonzero(fixed)
+    for first, last in pairwise(anchors):
+        source_steps = np.diff(values[first:last + 1])
+        direction = 1 if np.all(source_steps >= 0) else -1 if np.all(source_steps <= 0) else 0
+        steps = np.diff(np.rint(output[first:last + 1] * scale))
+        if not direction or np.all(direction * steps >= 0):
+            continue
+        segment = slice(first, last + 1)
+        local_anchors = np.array([0, last - first])
+        local_times, local_values = times[segment], values[segment]
+        # Local endpoints retain both sides of a turn recorded at the same time.
+        shape = .5 * (_pchip(local_times, local_anchors, local_values[local_anchors])
+                      + _profile_curve(local_times, local_values, local_anchors, preset))
+        part = slice(first + 1, last)
+        low, high = sorted((values[first], values[last]))
+        shape = np.clip(shape[1:-1], low, high)
+        output[part] = values[part] + strength * (shape - values[part])
+
+
 def smooth_channel(times, raw, preset, custom):
     """Separate detail, timing and strength; preserve all authored anchors exactly."""
     params = controls(preset, custom)
@@ -155,4 +179,6 @@ def smooth_channel(times, raw, preset, custom):
     target = _shape_target(times, values, filtered, fixed, preset)
     output = values + params["strength"] * (target - values)
     output[fixed] = values[fixed]
+    if preset.id == "motor_servo":
+        _preserve_motor_direction(times, values, output, fixed, (preset, params["strength"], scale))
     return np.clip(np.rint(output * scale), 0, np.iinfo(raw.dtype).max).astype(raw.dtype)

@@ -1,0 +1,7 @@
+# 编译副产物（DLL 入库即可，.exp/.lib/.obj 可重建）
+*.exp
+*.lib
+*.obj
+*.pdb
+build/
+__pycache__/

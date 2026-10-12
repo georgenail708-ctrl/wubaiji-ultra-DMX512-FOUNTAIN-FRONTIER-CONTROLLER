@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>实验室 · 3D 预览</title>
+<!-- 复用 ML 实验室模块自带的 three.js（本地化，离线可用）。
+     页面由宿主经 http://127.0.0.1:<port>/ 加载（避开 file:// 的 ES module/wasm 限制）。 -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "/vendor/three/three.module.min.js",
+    "three/addons/": "/vendor/three/examples/jsm/"
+  }
+}
+</script>
+<style>
+  html, body { margin: 0; height: 100%; background: #0a0b10; overflow: hidden; }
+  #stage { position: absolute; inset: 0; }
+  #hud {
+    position: absolute; left: 10px; top: 10px; z-index: 5;
+    font: 12px/1.5 ui-monospace, Consolas, monospace; color: #9fb0c8;
+    background: rgba(14,17,24,.72); border: 1px solid #2a3546; border-radius: 6px;
+    padding: 7px 10px; pointer-events: none; white-space: pre;
+  }
+  #fatal {
+    position: absolute; inset: 0; display: none; z-index: 9;
+    align-items: center; justify-content: center; color: #ff8080;
+    font: 14px/1.6 system-ui, sans-serif; text-align: center; padding: 24px;
+  }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="hud">等待实验室数据…</div>
+<div id="fatal"></div>
+
+<script type="module">
+import { Stage } from "/js/stage3d.js";
+
+const hud = document.getElementById("hud");
+const fatalEl = document.getElementById("fatal");
+const host = document.getElementById("stage");
+
+let stage = null;
+let layout = null;          // {positions:[{x,z,kind,...}], gridSize:[gx,gy], source}
+let device = "led_matrix";
+let lastFrame = null;
+let frameCount = 0, fpsT0 = performance.now(), fps = 0;
+
+function fatal(msg) {
+  fatalEl.style.display = "flex";
+  fatalEl.textContent = msg;
+}
+
+function rebuild() {
+  if (!stage || !layout) return;
+  const n = Math.max(1, (layout.positions || []).length);
+  // 真实摆位：把每个设备的位置喂给 stage；gx=n, gy=1（一维枚举，位置自带空间分布）
+  stage.layout = "custom";
+  stage.customPositions = (layout.positions || []).map((p) => ({
+    x: Number(p.x) || 0.5, z: Number(p.z) || 0.5,
+  }));
+  stage.buildGrid(n, 1, 16, device);
+  hud.textContent = `设备 ${n} 台 · 布局来源 ${layout.source || "-"} · ${device}`;
+  if (lastFrame) applyFrame(lastFrame);
+}
+
+function applyFrame(row) {
+  if (!stage || !row) return;
+  stage.update(row);
+}
+
+// ── 宿主注入接口（QWebChannel 走 runJavaScript 调这些）──────────────
+window.__labSetLayout = (obj) => {
+  try {
+    layout = obj || null;
+    rebuild();
+  } catch (e) { fatal("布局注入失败：" + e.message); }
+};
+
+window.__labSetDevice = (dev) => {
+  device = dev === "fountain_matrix" ? "fountain_matrix" : "led_matrix";
+  rebuild();
+};
+
+window.__labSetFrame = (idx, values) => {
+  if (!Array.isArray(values)) return;
+  lastFrame = values;
+  applyFrame(values);
+  frameCount++;
+  const now = performance.now();
+  if (now - fpsT0 > 1000) {
+    fps = frameCount * 1000 / (now - fpsT0);
+    frameCount = 0; fpsT0 = now;
+    const base = hud.textContent.split(" · fps")[0];
+    hud.textContent = `${base} · fps ${fps.toFixed(0)}`;
+  }
+};
+
+// ── 启动 ─────────────────────────────────────────────────────────
+function boot() {
+  try {
+    const c = document.createElement("canvas");
+    if (!c.getContext("webgl2")) { fatal("当前环境不支持 WebGL2，3D 预览不可用"); return; }
+    stage = new Stage(host);
+    // 高空俯视，贴合"灯光师俯瞰舞台"的实验室语境
+    stage.camera.position.set(0, 34, 0.01);
+    window.__labStage = stage;
+    // 通知宿主就绪（QWebChannel 可用时）
+    try {
+      if (window.labBridge && window.labBridge.pageReady) window.labBridge.pageReady();
+      else new QWebChannel(qt.webChannelTransport, (ch) => {
+        window.labBridge = ch.objects.labBridge;
+        window.labBridge.pageReady();
+      });
+    } catch (e) { /* 无 WebChannel 时静默（独立打开也能看渲染） */ }
+  } catch (e) {
+    fatal("3D 初始化失败：" + e.message);
+  }
+}
+
+// qwebchannel.js 由宿主的常驻注入脚本提供；独立打开时降级为纯渲染
+if (typeof QWebChannel === "undefined") {
+  // 宿主会在 DocumentReady 注入；这里轮询等待，超时后无桥也可跑
+  let n = 0;
+  const t = setInterval(() => {
+    if (typeof QWebChannel !== "undefined" || n++ > 30) { clearInterval(t); boot(); }
+  }, 100);
+} else {
+  boot();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,959 @@
+{
+ "cases": [
+  {
+   "t0": 0.0,
+   "t1": 4.0,
+   "feat": {
+    "e": 0.18,
+    "perc": 1.0,
+    "voiced": 0.31,
+    "centroid": 0.3385,
+    "kick": 1.0,
+    "hat": 0.903
+   },
+   "voices": {
+    "matrix_rgb": {
+     "rate": 1513.0,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "motor": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "fountain_rgb": {
+     "rate": 109.8,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    }
+   },
+   "n_active": 4
+  },
+  {
+   "t0": 4.0,
+   "t1": 19.2,
+   "feat": {
+    "e": 0.3,
+    "perc": 0.89,
+    "voiced": 0.09,
+    "centroid": 0.30875,
+    "kick": 0.859,
+    "hat": 1.0
+   },
+   "voices": {
+    "matrix_rgb": {
+     "rate": 1513.0,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "motor": {
+     "rate": 23.9,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "fountain_rgb": {
+     "rate": 53.3,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "valve": {
+     "rate": 59.0,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "pump": {
+     "rate": 40.8,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    }
+   },
+   "n_active": 6
+  },
+  {
+   "t0": 19.2,
+   "t1": 23.1,
+   "feat": {
+    "e": 0.38,
+    "perc": 0.83,
+    "voiced": 0.06,
+    "centroid": 0.2835,
+    "kick": 0.842,
+    "hat": 0.983
+   },
+   "voices": {
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "fountain_rgb": {
+     "rate": 35.9,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "motor": {
+     "rate": 47.7,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "pump": {
+     "rate": 40.8,
+     "topo": "line",
+     "seq": false,
+     "mph": false
+    },
+    "valve": {
+     "rate": 0.0,
+     "topo": "circle",
+     "seq": true,
+     "mph": false
+    },
+    "matrix_rgb": {
+     "rate": 352.5,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    }
+   },
+   "n_active": 6
+  },
+  {
+   "t0": 23.1,
+   "t1": 30.9,
+   "feat": {
+    "e": 0.55,
+    "perc": 0.84,
+    "voiced": 0.09,
+    "centroid": 0.287,
+    "kick": 0.853,
+    "hat": 0.966
+   },
+   "voices": {
+    "motor": {
+     "rate": 47.7,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "arc",
+     "seq": true,
+     "mph": false
+    },
+    "fountain_rgb": {
+     "rate": 0.0,
+     "topo": "arc",
+     "seq": true,
+     "mph": false
+    },
+    "pump": {
+     "rate": 81.5,
+     "topo": "line",
+     "seq": false,
+     "mph": false
+    },
+    "matrix_rgb": {
+     "rate": 352.5,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "valve": {
+     "rate": 0.0,
+     "topo": "arc",
+     "seq": true,
+     "mph": false
+    }
+   },
+   "n_active": 6
+  },
+  {
+   "t0": 30.9,
+   "t1": 38.3,
+   "feat": {
+    "e": 0.77,
+    "perc": 0.77,
+    "voiced": 0.07,
+    "centroid": 0.2885,
+    "kick": 0.819,
+    "hat": 0.846
+   },
+   "voices": {
+    "motor": {
+     "rate": 47.7,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "fountain_rgb": {
+     "rate": 0.0,
+     "topo": "line",
+     "seq": true,
+     "mph": true
+    },
+    "pump": {
+     "rate": 40.8,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "matrix_rgb": {
+     "rate": 996.1,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "valve": {
+     "rate": 0.0,
+     "topo": "line",
+     "seq": true,
+     "mph": false
+    }
+   },
+   "n_active": 6
+  },
+  {
+   "t0": 38.3,
+   "t1": 50.2,
+   "feat": {
+    "e": 0.77,
+    "perc": 0.78,
+    "voiced": 0.05,
+    "centroid": 0.3175,
+    "kick": 0.836,
+    "hat": 0.886
+   },
+   "voices": {
+    "valve": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "pump": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "fountain_rgb": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "motor": {
+     "rate": 20.2,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "matrix_rgb": {
+     "rate": 1639.8,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    }
+   },
+   "n_active": 6
+  },
+  {
+   "t0": 50.2,
+   "t1": 69.4,
+   "feat": {
+    "e": 0.62,
+    "perc": 0.69,
+    "voiced": 0.06,
+    "centroid": 0.294,
+    "kick": 0.713,
+    "hat": 0.8
+   },
+   "voices": {
+    "motor": {
+     "rate": 19.9,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "fountain_rgb": {
+     "rate": 0.0,
+     "topo": "line",
+     "seq": true,
+     "mph": false
+    },
+    "pump": {
+     "rate": 33.1,
+     "topo": "line",
+     "seq": true,
+     "mph": false
+    },
+    "matrix_rgb": {
+     "rate": 2936.8,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "valve": {
+     "rate": 0.0,
+     "topo": "line",
+     "seq": true,
+     "mph": false
+    }
+   },
+   "n_active": 6
+  },
+  {
+   "t0": 69.4,
+   "t1": 73.1,
+   "feat": {
+    "e": 0.67,
+    "perc": 0.69,
+    "voiced": 0.03,
+    "centroid": 0.303,
+    "kick": 0.678,
+    "hat": 0.829
+   },
+   "voices": {
+    "motor": {
+     "rate": 14.1,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "fountain_rgb": {
+     "rate": 409.8,
+     "topo": "line",
+     "seq": false,
+     "mph": false
+    },
+    "pump": {
+     "rate": 33.1,
+     "topo": "line",
+     "seq": false,
+     "mph": false
+    },
+    "valve": {
+     "rate": 93.7,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    }
+   },
+   "n_active": 5
+  },
+  {
+   "t0": 73.1,
+   "t1": 81.0,
+   "feat": {
+    "e": 0.74,
+    "perc": 0.67,
+    "voiced": 0.04,
+    "centroid": 0.29025,
+    "kick": 0.672,
+    "hat": 0.777
+   },
+   "voices": {
+    "motor": {
+     "rate": 14.1,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "fountain_rgb": {
+     "rate": 409.8,
+     "topo": "line",
+     "seq": false,
+     "mph": false
+    },
+    "pump": {
+     "rate": 33.1,
+     "topo": "line",
+     "seq": false,
+     "mph": false
+    },
+    "valve": {
+     "rate": 93.7,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "matrix_rgb": {
+     "rate": 172.8,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    }
+   },
+   "n_active": 6
+  },
+  {
+   "t0": 81.0,
+   "t1": 84.6,
+   "feat": {
+    "e": 0.68,
+    "perc": 0.74,
+    "voiced": 0.01,
+    "centroid": 0.32975,
+    "kick": 0.727,
+    "hat": 0.914
+   },
+   "voices": {
+    "motor": {
+     "rate": 14.1,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "fountain_rgb": {
+     "rate": 107.4,
+     "topo": "line",
+     "seq": false,
+     "mph": false
+    },
+    "pump": {
+     "rate": 66.2,
+     "topo": "line",
+     "seq": false,
+     "mph": false
+    }
+   },
+   "n_active": 4
+  },
+  {
+   "t0": 84.6,
+   "t1": 96.2,
+   "feat": {
+    "e": 0.77,
+    "perc": 0.69,
+    "voiced": 0.02,
+    "centroid": 0.3525,
+    "kick": 0.667,
+    "hat": 0.869
+   },
+   "voices": {
+    "motor": {
+     "rate": 14.1,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "fountain_rgb": {
+     "rate": 70.2,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "pump": {
+     "rate": 33.1,
+     "topo": "line",
+     "seq": true,
+     "mph": false
+    },
+    "valve": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "matrix_rgb": {
+     "rate": 765.8,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    }
+   },
+   "n_active": 6
+  },
+  {
+   "t0": 96.2,
+   "t1": 107.5,
+   "feat": {
+    "e": 0.72,
+    "perc": 0.81,
+    "voiced": 0.01,
+    "centroid": 0.20025,
+    "kick": 0.848,
+    "hat": 0.926
+   },
+   "voices": {
+    "fountain_rgb": {
+     "rate": 136.3,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "motor": {
+     "rate": 53.9,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "pump": {
+     "rate": 441.0,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "matrix_rgb": {
+     "rate": 2423.8,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    }
+   },
+   "n_active": 5
+  },
+  {
+   "t0": 107.5,
+   "t1": 115.1,
+   "feat": {
+    "e": 0.76,
+    "perc": 0.8,
+    "voiced": 0.01,
+    "centroid": 0.2405,
+    "kick": 0.839,
+    "hat": 0.874
+   },
+   "voices": {
+    "fountain_rgb": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "motor": {
+     "rate": 39.6,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "pump": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "matrix_rgb": {
+     "rate": 2423.8,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    }
+   },
+   "n_active": 5
+  },
+  {
+   "t0": 115.1,
+   "t1": 119.2,
+   "feat": {
+    "e": 0.96,
+    "perc": 0.82,
+    "voiced": 0.03,
+    "centroid": 0.32025,
+    "kick": 0.83,
+    "hat": 0.891
+   },
+   "voices": {
+    "matrix_rgb": {
+     "rate": 2423.8,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "fountain_rgb": {
+     "rate": 0.0,
+     "topo": "arc",
+     "seq": true,
+     "mph": true
+    },
+    "motor": {
+     "rate": 75.7,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "pump": {
+     "rate": 0.0,
+     "topo": "arc",
+     "seq": true,
+     "mph": true
+    }
+   },
+   "n_active": 5
+  },
+  {
+   "t0": 119.2,
+   "t1": 123.2,
+   "feat": {
+    "e": 0.99,
+    "perc": 0.72,
+    "voiced": 0.02,
+    "centroid": 0.352,
+    "kick": 0.718,
+    "hat": 0.829
+   },
+   "voices": {
+    "matrix_rgb": {
+     "rate": 2423.8,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "fountain_rgb": {
+     "rate": 356.2,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "motor": {
+     "rate": 18.2,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "pump": {
+     "rate": 53.4,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    }
+   },
+   "n_active": 5
+  },
+  {
+   "t0": 123.2,
+   "t1": 125.9,
+   "feat": {
+    "e": 1.0,
+    "perc": 0.67,
+    "voiced": 0.01,
+    "centroid": 0.34375,
+    "kick": 0.67,
+    "hat": 0.823
+   },
+   "voices": {
+    "matrix_rgb": {
+     "rate": 2423.8,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "fountain_rgb": {
+     "rate": 337.9,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "motor": {
+     "rate": 12.0,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "pump": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "valve": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    }
+   },
+   "n_active": 6
+  },
+  {
+   "t0": 125.9,
+   "t1": 142.2,
+   "feat": {
+    "e": 0.51,
+    "perc": 0.83,
+    "voiced": 0.05,
+    "centroid": 0.274,
+    "kick": 0.879,
+    "hat": 0.943
+   },
+   "voices": {
+    "matrix_rgb": {
+     "rate": 1313.0,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "valve": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "pump": {
+     "rate": 174.2,
+     "topo": "line",
+     "seq": true,
+     "mph": false
+    },
+    "fountain_rgb": {
+     "rate": 0.0,
+     "topo": "line",
+     "seq": true,
+     "mph": false
+    },
+    "motor": {
+     "rate": 36.2,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    }
+   },
+   "n_active": 6
+  },
+  {
+   "t0": 142.2,
+   "t1": 169.3,
+   "feat": {
+    "e": 0.96,
+    "perc": 0.74,
+    "voiced": 0.02,
+    "centroid": 0.3425,
+    "kick": 0.779,
+    "hat": 0.834
+   },
+   "voices": {
+    "matrix_rgb": {
+     "rate": 1661.9,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "motor": {
+     "rate": 28.5,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "fountain_rgb": {
+     "rate": 34.3,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "pump": {
+     "rate": 55.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    },
+    "valve": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": false
+    }
+   },
+   "n_active": 6
+  },
+  {
+   "t0": 169.3,
+   "t1": 173.8,
+   "feat": {
+    "e": 0.79,
+    "perc": 0.69,
+    "voiced": 0.03,
+    "centroid": 0.38575,
+    "kick": 0.713,
+    "hat": 0.766
+   },
+   "voices": {
+    "matrix_rgb": {
+     "rate": 2118.6,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    },
+    "motor": {
+     "rate": 57.7,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "fountain_rgb": {
+     "rate": 35.5,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "pump": {
+     "rate": 103.1,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    }
+   },
+   "n_active": 5
+  },
+  {
+   "t0": 173.8,
+   "t1": 182.5,
+   "feat": {
+    "e": 0.1,
+    "perc": 0.58,
+    "voiced": 0.09,
+    "centroid": 0.276,
+    "kick": 0.761,
+    "hat": 0.32
+   },
+   "voices": {
+    "motor": {
+     "rate": 28.3,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "function": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "fountain_rgb": {
+     "rate": 0.0,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "pump": {
+     "rate": 70.9,
+     "topo": "scatter",
+     "seq": true,
+     "mph": true
+    },
+    "matrix_rgb": {
+     "rate": 171.6,
+     "topo": "scatter",
+     "seq": false,
+     "mph": false
+    }
+   },
+   "n_active": 5
+  }
+ ],
+ "n": 20
+}

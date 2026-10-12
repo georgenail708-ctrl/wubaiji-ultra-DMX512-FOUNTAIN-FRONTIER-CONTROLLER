@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Testing & tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.research_cache/
+coverage/
+.coverage
+htmlcov/
+
+# Build artifacts
+build/
+dist/
+*.spec.bak
+*.dll.manifest
+
+# Runtime/user data
+autosave/
+*.dmxt
+*.dmxt.npz
+*.bkkeys
+
+# OS
+Thumbs.db
+.DS_Store
+
+# IDE
+.idea/
+.vscode/

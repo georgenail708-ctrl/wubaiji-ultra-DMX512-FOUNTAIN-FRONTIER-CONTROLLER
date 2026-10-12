@@ -1,0 +1,5 @@
+Open Doodles — https://www.opendoodles.com/
+Author: Pablo Stanley
+License (site statement): "Free for Commercial and Personal Use.
+  No need to credit, license, or anything."
+Download host: https://opendoodles.s3-us-west-1.amazonaws.com/

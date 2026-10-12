@@ -1,0 +1,104 @@
+# See https://pre-commit.com for more information
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # --- General file health checks ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+      - id: check-docstring-first
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: forbid-submodules
+      - id: no-commit-to-branch
+        args: ['--branch', 'main']
+
+  # --- Ruff: Linting + Formatting (replaces flake8, isort, black) ---
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.0
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  # --- mypy: Static Type Checking ---
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        args:
+          - --ignore-missing-imports
+        additional_dependencies:
+          - numpy>=2.4
+          - pydantic>=2.13
+        exclude: ^(tests/|venv/|build/|dist/|\.codex_)
+
+  # --- Bandit: Security Scanning ---
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.0
+    hooks:
+      - id: bandit
+        args: ['-c', 'pyproject.toml']
+        additional_dependencies: ['bandit[toml]']
+        exclude: ^(tests/|venv/|build/|dist/)
+
+  # --- Debug leftover detection ---
+  - repo: local
+    hooks:
+      - id: forbid-debug
+        name: Forbid debug leftovers
+        entry: '\.(py|pyx)$'
+        language: pygrep
+        args: ['--pattern', '(breakpoint\(\)|import pdb|pdb\.set_trace|console\.log|# TODO FIXME HACK XXX)']
+        pass_filenames: true
+        types: [python]
+
+  # --- Placeholder comment detection ---
+  - repo: local
+    hooks:
+      - id: forbid-placeholders
+        name: Forbid AI placeholder comments
+        entry: '(unchanged|remains the same|rest of the|previous code here|code omitted|\.\.\. unchanged)'
+        language: pygrep
+        types: [text]
+        exclude: ^(venv/|\.codex_|\.git/)
+
+  # --- File size gate (500-line cap) ---
+  - repo: local
+    hooks:
+      - id: file-size-gate
+        name: Check file size (max 500 lines)
+        entry: bash -c 'MAX=500; for f in "$@"; do lines=$(wc -l < "$f"); if [ "$lines" -gt "$MAX" ]; then echo "$f: $lines lines (max $MAX)"; exit 1; fi; done' --
+        language: system
+        types: [python]
+        exclude: ^(venv/|\.codex_|tests/)
+
+  # --- No bare except (swallow errors silently) ---
+  - repo: local
+    hooks:
+      - id: forbid-bare-except
+        name: Forbid bare except clauses
+        entry: 'except\s*:'
+        language: pygrep
+        types: [python]
+        exclude: ^(venv/|\.codex_)
+
+  # --- Code spell check ---
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.0
+    hooks:
+      - id: codespell
+        args: [--skip='venv,.git,*.json,*.csv,*.lock']

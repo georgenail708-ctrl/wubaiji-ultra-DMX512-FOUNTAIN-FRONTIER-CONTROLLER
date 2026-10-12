@@ -1,0 +1,165 @@
+[project]
+name = "wubaiji-ultra"
+version = "1.0.0"
+description = "雾白纪 ULTRA — free and open-source DMX lighting console"
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "雾白纪 ULTRA Team" },
+]
+keywords = ["dmx", "lighting", "art-net", "sacn", "fountain", "stage", "show-control"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: End Users/Desktop",
+    "Topic :: Multimedia :: Graphics",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+dependencies = [
+    "numpy>=2.4",
+    "openpyxl>=3.1",
+    "PyQt6>=6.11",
+    "qtawesome>=1.4",
+    "sounddevice>=0.5",
+    "soundfile>=0.13",
+    "pygame>=2.6",
+    "pillow>=12",
+    "librosa>=0.11",
+    # R183 4.3 依赖清理：实际使用补声明（先前装了未声明/未用声明，双向对齐）
+    "scipy>=1.17",      # import_patch_csv cKDTree（R183 3.3 计算层）
+    "numba>=0.65",      # track_smooth/motor_path njit（QASCADE_NUMBA=0 门控退路）
+    "ifaddr>=0.2",      # network/nic_broadcast.py 真掩码枚举（R183 3.2）
+    "orjson>=3.10.6",   # 工程 JSON 解析（models.parse_project_json；缺席退路纯 json）
+                        # 3.10.6 = 首个出 cp313 wheel 的版本（PyPI 3.10.0 无 cp313
+                        # wheel → 本仓 Python 3.13 会触发 Rust 源码构建失败）
+]
+# R183 4.3 审计移除零引用声明（全仓 src/tools/render_lab grep 0 命中，2026-09-30）：
+#   pandas / pyqtgraph / pyqtdarktheme(未装) / pydantic(仅第三方工具目录) / PyYAML
+#   —— 传递依赖仍由 librosa 等自动满足；如需恢复请先证实引用再声明。
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "pytest-qt>=4",
+    "hypothesis>=6",
+    "ruff>=0.9",
+    "mypy>=1.15",
+    "bandit>=1.8",
+    "pre-commit>=4",
+    "syrupy>=5",
+]
+
+# ── Ruff: lint + format（替代 flake8/black/isort）────────────────
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # Pyflakes (unused imports, undefined names)
+    "I",     # isort (import sorting)
+    "N",     # pep8-naming
+    "UP",    # pyupgrade (modern syntax)
+    "B",     # flake8-bugbear (common bugs)
+    "SIM",   # flake8-simplify
+    "C4",    # flake8-comprehensions
+    "RUF",   # Ruff-specific rules
+    "T20",   # flake8-print (no print() in production)
+    "RET",   # flake8-return
+    "PIE",   # flake8-pie (unnecessary code)
+]
+ignore = [
+    "D100",  # missing docstring in public module — project uses comment blocks
+    "D104",  # missing docstring in public package
+    "D107",  # missing docstring in __init__
+    "E501",  # line too long — ruff format handles it
+    "SIM108", # use ternary — readability over brevity
+]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+# ── mypy: static type checking（strict 模式）───────────────────────
+[tool.mypy]
+python_version = "3.11"
+strict = false               # 逐步收紧 — 目标 true
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = false
+warn_redundant_casts = true
+warn_no_return = true
+warn_unreachable = true
+ignore_missing_imports = true  # PyQt6/PyQtGraph 无完整 stubs
+disallow_untyped_defs = false
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "tests.*",
+]
+disallow_untyped_defs = false
+
+# ── mypy strict islands（渐进收紧棘轮）────────────────────────────
+# 战略：全仓 21 万行一次性 --strict 不可达（0 类型覆盖、PyQt6 无完整 stubs）。
+# 改为"strict 孤岛"逐包收紧：下列模块从现在起必须带类型注解，新代码一经
+# 落入这些 package 即刻受严格约束；孤岛随类型覆盖提升逐步扩大，最终收敛到
+# 全局 strict = true。CI / pre-commit 不再传 --strict，本文件是唯一真源。
+[[tool.mypy.overrides]]
+module = ["src.core.constants", "src.processing.dispatch.*"]
+disallow_untyped_defs = true
+
+# ── pytest ────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
+markers = [
+    "slow: slow tests (deselect with '-m \"not slow\"')",
+    "gui: tests that require a display (Qt)",
+    "network: tests that require network access",
+    "dmx: tests that require DMX hardware",
+]
+
+# ── coverage ─────────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "tests/*",
+    "venv/*",
+    ".venv/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if __name__ == .__main__.:",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
+
+# ── bandit: security scanning ────────────────────────────────────
+[tool.bandit]
+exclude_dirs = ["tests", "venv", ".venv", "build", "dist", ".codex_*"]
+skips = ["B101", "B110"]  # B101=assert_used (used for invariants), B110=try_except_pass

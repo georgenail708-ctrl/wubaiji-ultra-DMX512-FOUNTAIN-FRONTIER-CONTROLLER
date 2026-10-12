@@ -1,0 +1,5 @@
+Poly Haven — https://polyhaven.com/
+License: CC0 1.0 Universal (public domain dedication)
+  https://polyhaven.com/license  |  https://creativecommons.org/publicdomain/zero/1.0/
+Files used: 1k diffuse JPG (dl.polyhaven.org, file/ph-assets/Textures/jpg/1k/).
+Attribution is not required; credited anyway.

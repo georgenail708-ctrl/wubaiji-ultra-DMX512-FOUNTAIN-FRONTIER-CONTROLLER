@@ -1,0 +1,11 @@
+The Metropolitan Museum of Art — Open Access (CC0 1.0)
+Policy: https://www.metmuseum.org/about-the-met/policies-and-documents/open-access
+
+paintings/paint_met_gogh_wheat_field_with_cypresses.jpg  Vincent van Gogh, Wheat Field with Cypresses, 1889
+paintings/paint_met_gogh_cypresses.jpg                   Vincent van Gogh, Cypresses, 1889
+
+Both works are in the public domain (author died 1890); The Met releases images of
+public-domain works in its collection under CC0 (Open Access, flagged 'OA Public Domain').
+VERIFY LOCALLY (R183 fix-round note): the files were already in the repo without a
+registered source record; confirm each object page shows the OA/Public Domain flag and
+record the object URL + download date here.

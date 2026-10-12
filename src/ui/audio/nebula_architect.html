@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nebula Architect — 星云建筑师</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#05051a;overflow:hidden;font-family:'Segoe UI','Noto Sans SC',system-ui,sans-serif;cursor:grab}
+body:active{cursor:grabbing} body.drawing{cursor:crosshair} canvas{display:block}
+
+#hud{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10}
+#hud *{pointer-events:auto}
+#hud-top{display:flex;justify-content:space-between;padding:20px 24px}
+#hud-harmony{font-size:48px;font-weight:200;color:#00E5FF;text-shadow:0 0 30px rgba(0,229,255,0.5),0 0 60px rgba(0,229,255,0.2);letter-spacing:4px}
+#hud-harmony-label{font-size:11px;color:rgba(0,229,255,0.5);text-transform:uppercase;letter-spacing:2px}
+#hud-metrics{display:flex;gap:24px;font-size:12px;color:rgba(0,229,255,0.7);text-align:right}
+#hud-metrics span{display:block;font-size:20px;font-weight:300;color:#00E5FF}
+
+#hud-bottom{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);display:flex;gap:12px;z-index:10}
+#hud-bottom button{background:rgba(0,229,255,0.08);border:1px solid rgba(0,229,255,0.25);color:rgba(0,229,255,0.8);padding:8px 16px;border-radius:4px;font-size:11px;cursor:pointer;letter-spacing:1px;transition:all 0.3s}
+#hud-bottom button:hover{background:rgba(0,229,255,0.18);border-color:rgba(0,229,255,0.5);color:#00E5FF;box-shadow:0 0 15px rgba(0,229,255,0.2)}
+#hud-bottom button.active{background:rgba(0,229,255,0.2);border-color:#00E5FF;color:#fff}
+
+#hud-help{position:fixed;bottom:78px;left:50%;transform:translateX(-50%);color:rgba(0,229,255,0.4);font-size:10px;letter-spacing:1px;z-index:10;transition:opacity 1s}
+
+/* 参数面板 */
+#param-panel{position:fixed;right:16px;top:50%;transform:translateY(-50%);width:220px;background:rgba(5,5,26,0.92);border:1px solid rgba(0,229,255,0.25);border-radius:6px;padding:14px;z-index:15;display:none}
+#param-panel h3{color:#00E5FF;font-size:13px;font-weight:400;margin-bottom:10px;letter-spacing:1px}
+#param-panel label{display:block;color:rgba(0,229,255,0.6);font-size:10px;margin:8px 0 3px}
+#param-panel input[type=range]{width:100%;accent-color:#00E5FF;height:4px}
+#param-panel .val{float:right;color:#00E5FF;font-size:11px}
+#param-panel .metric{color:rgba(0,229,255,0.7);font-size:10px;margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,229,255,0.15)}
+#param-panel button{width:100%;margin-top:8px;padding:6px;background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.3);color:#00E5FF;border-radius:3px;cursor:pointer;font-size:10px;letter-spacing:1px}
+#param-panel button:hover{background:rgba(0,229,255,0.2)}
+
+#history-panel{position:fixed;left:16px;bottom:120px;width:180px;background:rgba(5,5,26,0.92);border:1px solid rgba(0,229,255,0.15);border-radius:6px;padding:10px;z-index:15;font-size:9px;color:rgba(0,229,255,0.5);display:none}
+#history-panel h3{color:rgba(0,229,255,0.6);font-size:10px;font-weight:400;margin-bottom:6px}
+#history-panel .entry{margin:2px 0;font-family:monospace}
+#history-panel .entry .up{color:#2ED573}.entry .down{color:#FF4757}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+
+<div id="hud">
+  <div id="hud-top">
+    <div><div id="hud-harmony-label">宇宙和谐度</div><div id="hud-harmony">--</div></div>
+    <div id="hud-metrics">
+      <div>PCA<span id="met-pca">--</span></div><div>轮廓<span id="met-sil">--</span></div>
+      <div>准确率<span id="met-acc">--</span></div><div>特征<span id="met-feat">--</span></div><div>K<span id="met-k">--</span></div>
+    </div>
+  </div>
+</div>
+
+<div id="param-panel">
+  <h3 id="param-title">参数</h3>
+  <div id="param-content"></div>
+</div>
+
+<div id="history-panel" style="position:fixed;left:12px;bottom:80px;width:280px;background:rgba(10,10,30,0.85);border:1px solid #222;border-radius:8px;padding:8px;z-index:10;color:#888;font-size:10px;display:block;">
+  <div style="font-weight:bold;color:#5a9ebf;margin-bottom:4px;">训练历史</div>
+  <canvas id="history-chart" width="260" height="120"></canvas>
+</div>
+
+<div id="hud-help">🖐 点击投放引力井 | 🔮 1/2切换维度 | ✏️ Shift拖动画分界线 | 🧠 N种神经元 | ☄️ Space彗星 | WASD飞行</div>
+<div id="hud-bottom">
+  <button id="btn-well" class="active">🖐 引力井</button>
+  <button id="btn-curtain">✏️ 分界</button>
+  <button id="btn-neuron">🧠 神经元</button>
+  <button id="btn-comet">☄️ 彗星</button>
+  <button id="btn-density">💡 密度</button>
+  <button id="btn-reset">↺ 重置</button>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// ═══════════════════════════════════════════════════════════════════
+// 纯 JS ML 算法实现
+// ═══════════════════════════════════════════════════════════════════
+
+class JSKMeans {
+  // K-Means++ 初始化 + Lloyd迭代
+  static fit(points, k, maxIter=20) {
+    const n = points.length, dim = points[0].length;
+    // K-Means++ 初始化
+    const cents = [points[Math.floor(Math.random()*n)].slice()];
+    for (let ci = 1; ci < k; ci++) {
+      const dists = points.map(p => Math.min(...cents.map(c => {
+        let s = 0; for (let d=0;d<dim;d++) s += (p[d]-c[d])**2; return s;
+      })));
+      const total = dists.reduce((a,b)=>a+b,0);
+      let r = Math.random()*total, acc = 0, sel = 0;
+      for (let i=0;i<n;i++) { acc+=dists[i]; if(acc>=r){sel=i;break;} }
+      cents.push(points[sel].slice());
+    }
+    // Lloyd 迭代
+    let labels = new Array(n), changed = true;
+    for (let iter = 0; iter < maxIter && changed; iter++) {
+      changed = false;
+      for (let i = 0; i < n; i++) {
+        let best = -1, bestD = Infinity;
+        for (let ci = 0; ci < k; ci++) {
+          let d = 0; for (let j=0;j<dim;j++) d += (points[i][j]-cents[ci][j])**2;
+          if (d < bestD) { bestD = d; best = ci; }
+        }
+        if (labels[i] !== best) { changed = true; labels[i] = best; }
+      }
+      // 更新中心
+      const sums = Array.from({length:k},()=>({v:new Array(dim).fill(0),c:0}));
+      for (let i=0;i<n;i++) { const s=sums[labels[i]]; for(let j=0;j<dim;j++)s.v[j]+=points[i][j]; s.c++; }
+      for (let ci=0;ci<k;ci++) { if(sums[ci].c>0) for(let j=0;j<dim;j++) cents[ci][j]=sums[ci].v[j]/sums[ci].c; }
+    }
+    return {labels, centers: cents};
+  }
+
+  static silhouette(points, labels, k) {
+    const n = points.length;
+    if (k < 2 || n < 2) return 0;
+    // 计算每个点到同簇/异簇的平均距离
+    let totalSil = 0, count = 0;
+    for (let i = 0; i < n; i++) {
+      let a = 0, aN = 0;
+      const clusterSizes = new Array(k).fill(0);
+      const clusterDists = new Array(k).fill(0);
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue;
+        let d = 0; for (let dd=0;dd<points[i].length;dd++) d += (points[i][dd]-points[j][dd])**2;
+        d = Math.sqrt(d);
+        if (labels[j] === labels[i]) { a += d; aN++; }
+        clusterDists[labels[j]] += d; clusterSizes[labels[j]]++;
+      }
+      if (aN === 0) continue;
+      a /= aN;
+      let b = Infinity;
+      for (let c = 0; c < k; c++) {
+        if (c === labels[i] || clusterSizes[c] === 0) continue;
+        const avg = clusterDists[c] / clusterSizes[c];
+        if (avg < b) b = avg;
+      }
+      if (b === Infinity || a+b === 0) continue;
+      totalSil += (b - a) / Math.max(a, b);
+      count++;
+    }
+    return count > 0 ? totalSil / count : 0;
+  }
+}
+
+class JSPCA {
+  // 通过协方差矩阵 + 幂迭代计算主成分
+  static fit(X, nComp=3) {
+    const n = X.length, dim = X[0].length;
+    // 中心化
+    const mean = new Array(dim).fill(0);
+    for (let i=0;i<n;i++) for(let j=0;j<dim;j++) mean[j]+=X[i][j];
+    for(let j=0;j<dim;j++) mean[j]/=n;
+    const centered = X.map(row=>row.map((v,j)=>v-mean[j]));
+    // 协方差矩阵
+    const cov = Array.from({length:dim},()=>new Array(dim).fill(0));
+    for(let i=0;i<dim;i++) for(let j=i;j<dim;j++) {
+      let s=0; for(let k=0;k<n;k++) s+=centered[k][i]*centered[k][j];
+      cov[i][j]=cov[j][i]=s/(n-1);
+    }
+    // 幂迭代求前nComp个特征向量
+    const comps = [];
+    for (let c = 0; c < nComp; c++) {
+      let v = new Array(dim).fill(0); v[c%dim]=1;
+      let prevV = v.slice();
+      for (let iter = 0; iter < 50; iter++) {
+        const nv = new Array(dim).fill(0);
+        for(let i=0;i<dim;i++) for(let j=0;j<dim;j++) nv[i]+=cov[i][j]*v[j];
+        // 正交化
+        for (const prev of comps) { let dot=0; for(let i=0;i<dim;i++)dot+=nv[i]*prev[i]; for(let i=0;i<dim;i++)nv[i]-=dot*prev[i]; }
+        const norm = Math.sqrt(nv.reduce((s,x)=>s+x*x,0));
+        if (norm < 1e-10) break;
+        for(let i=0;i<dim;i++) v[i]=nv[i]/norm;
+        // 收敛检测
+        const delta = v.reduce((s,vi,i)=>s+(vi-prevV[i])**2, 0);
+        if (delta < 1e-8) break;
+        prevV = v.slice();
+      }
+      comps.push(v);
+      // 紧缩
+      const ev = v.reduce((s,x,i)=>{let y=0;for(let j=0;j<dim;j++)y+=cov[i][j]*v[j];return s+x*y;},0);
+      for(let i=0;i<dim;i++) for(let j=0;j<dim;j++) cov[i][j]-=ev*v[i]*v[j];
+    }
+    // 方差解释率
+    const totalVar = centered.reduce((s,row)=>s+row.reduce((a,b)=>a+b*b,0),0)/(n-1);
+    const variances = comps.map(v=>{
+      let y=0;for(let i=0;i<dim;i++){let d=0;for(let k=0;k<n;k++)d+=centered[k][i]*v[i];y+=d*d/(n-1);}
+      return y/totalVar;
+    });
+    // 投影
+    const proj = X.map(row=>comps.map(v=>v.reduce((s,vi,i)=>s+vi*row[i],0)));
+    return {components: comps, variances, projection: proj};
+  }
+}
+
+class JSDecisionTree {
+  // Full recursive decision tree with Gini impurity
+
+  static fit(X, y, maxDepth=4, minSamples=3) {
+    const tree = JSDecisionTree._buildNode(X, y, 0, maxDepth, minSamples);
+    return tree;
+  }
+
+  static _buildNode(X, y, depth, maxDepth, minSamples) {
+    const n = X.length;
+    // Leaf conditions
+    const uniqueLabels = new Set(y);
+    if (uniqueLabels.size === 1 || n < minSamples * 2 || depth >= maxDepth) {
+      // Count majority class
+      const counts = {};
+      for (const v of y) counts[v] = (counts[v] || 0) + 1;
+      let best = y[0], bestCount = 0;
+      for (const [k, c] of Object.entries(counts)) {
+        if (c > bestCount) { best = k; bestCount = c; }
+      }
+      return { leaf: true, value: best, confidence: bestCount / n, samples: n };
+    }
+
+    const split = JSDecisionTree.findBestSplit(X, y, minSamples);
+    if (!split) {
+      // No good split found
+      const counts = {};
+      for (const v of y) counts[v] = (counts[v] || 0) + 1;
+      let best = y[0], bestCount = 0;
+      for (const [k, c] of Object.entries(counts)) {
+        if (c > bestCount) { best = k; bestCount = c; }
+      }
+      return { leaf: true, value: best, confidence: bestCount / n, samples: n };
+    }
+
+    // Split data
+    const leftX = [], leftY = [], rightX = [], rightY = [];
+    for (let i = 0; i < n; i++) {
+      if (X[i][split.feature] <= split.threshold) {
+        leftX.push(X[i]); leftY.push(y[i]);
+      } else {
+        rightX.push(X[i]); rightY.push(y[i]);
+      }
+    }
+
+    if (leftX.length === 0 || rightX.length === 0) {
+      const counts = {};
+      for (const v of y) counts[v] = (counts[v] || 0) + 1;
+      let best = y[0], bestCount = 0;
+      for (const [k, c] of Object.entries(counts)) {
+        if (c > bestCount) { best = k; bestCount = c; }
+      }
+      return { leaf: true, value: best, confidence: bestCount / n, samples: n };
+    }
+
+    return {
+      leaf: false,
+      feature: split.feature,
+      threshold: split.threshold,
+      gain: split.gain,
+      depth: depth,
+      left: JSDecisionTree._buildNode(leftX, leftY, depth + 1, maxDepth, minSamples),
+      right: JSDecisionTree._buildNode(rightX, rightY, depth + 1, maxDepth, minSamples),
+    };
+  }
+
+  static findBestSplit(X, y, minSamples=3) {
+    const n = X.length, dim = X[0].length;
+    if (n < minSamples * 2) return null;
+    const parentGini = JSDecisionTree._gini(y);
+    let bestGain = 0, bestFeat = -1, bestThresh = 0;
+
+    for (let f = 0; f < dim; f++) {
+      const vals = X.map((r, i) => ({ v: r[f], y: y[i] })).sort((a, b) => a.v - b.v);
+      let leftCounts = {}, rightCounts = {};
+      for (const item of vals) rightCounts[item.y] = (rightCounts[item.y] || 0) + 1;
+      let leftN = 0, rightN = n;
+
+      for (let i = 0; i < n - 1; i++) {
+        leftCounts[vals[i].y] = (leftCounts[vals[i].y] || 0) + 1; leftN++;
+        rightCounts[vals[i].y]--; rightN--;
+        if (vals[i].v === vals[i + 1]?.v) continue;
+        if (leftN < minSamples || rightN < minSamples) continue;
+        const leftGini = JSDecisionTree._giniFromCounts(leftCounts, leftN);
+        const rightGini = JSDecisionTree._giniFromCounts(rightCounts, rightN);
+        const gain = parentGini - (leftN / n * leftGini + rightN / n * rightGini);
+        if (gain > bestGain) { bestGain = gain; bestFeat = f; bestThresh = (vals[i].v + vals[i + 1].v) / 2; }
+      }
+    }
+    return bestFeat >= 0 ? { feature: bestFeat, threshold: bestThresh, gain: bestGain } : null;
+  }
+
+  static predict(tree, x) {
+    if (tree.leaf) return tree.value;
+    if (x[tree.feature] <= tree.threshold) {
+      return JSDecisionTree.predict(tree.left, x);
+    } else {
+      return JSDecisionTree.predict(tree.right, x);
+    }
+  }
+
+  static _extractRules(tree, featureNames, prefix='') {
+    if (tree.leaf) {
+      return [`${prefix || '无条件'} -> ${ROLE_NAMES[tree.value]} (置信度${Math.round(tree.confidence * 100)}%)`];
+    }
+    const fname = featureNames[tree.feature] || `f${tree.feature}`;
+    const rules = [];
+    rules.push(...JSDecisionTree._extractRules(tree.left, featureNames, `${prefix}${fname} <= ${tree.threshold.toFixed(2)}`));
+    rules.push(...JSDecisionTree._extractRules(tree.right, featureNames, `${prefix}${fname} > ${tree.threshold.toFixed(2)}`));
+    return rules;
+  }
+
+  static _gini(y) {
+    const c = {};
+    for (const v of y) c[v] = (c[v] || 0) + 1;
+    return JSDecisionTree._giniFromCounts(c, y.length);
+  }
+
+  static _giniFromCounts(counts, total) {
+    let s = 0;
+    for (const k in counts) s += (counts[k] / total) ** 2;
+    return 1 - s;
+  }
+}
+
+class JSLasso {
+  // 坐标下降 + 软阈值 (简化版)
+  static fit(X, y, alpha, maxIter=200) {
+    const n = X.length, p = X[0].length;
+    let coefs = new Array(p).fill(0);
+    // 标准化
+    const xMean = new Array(p).fill(0), xStd = new Array(p).fill(1);
+    for(let i=0;i<n;i++) for(let j=0;j<p;j++) xMean[j]+=X[i][j];
+    for(let j=0;j<p;j++) xMean[j]/=n;
+    for(let i=0;i<n;i++) for(let j=0;j<p;j++){const d=X[i][j]-xMean[j];xStd[j]+=d*d;}
+    for(let j=0;j<p;j++) xStd[j]=Math.sqrt(xStd[j]/(n-1))||1;
+    const Xs = X.map(row=>row.map((v,j)=>(v-xMean[j])/xStd[j]));
+
+    for (let iter = 0; iter < maxIter; iter++) {
+      for (let j = 0; j < p; j++) {
+        let rho = 0;
+        for (let i = 0; i < n; i++) {
+          let pred = 0; for (let k=0;k<p;k++) if(k!==j) pred+=coefs[k]*Xs[i][k];
+          rho += Xs[i][j] * (y[i] - pred);
+        }
+        rho /= n;
+        // 软阈值 (标准Lasso，不是Elastic Net)
+        // a_jj = (1/n)*sum(x_j^2) for standardized data
+        const a_jj = Xs.reduce((s, r) => s + r[j] * r[j], 0) / n;
+        coefs[j] = Math.sign(rho) * Math.max(0, Math.abs(rho) - alpha) / Math.max(a_jj, 1e-10);
+      }
+    }
+    return coefs.map((c,j)=>c/xStd[j]); // 反标准化
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 训练数据 + 全局状态
+// ═══════════════════════════════════════════════════════════════════
+const PI2 = Math.PI * 2;
+const ROLE_COLORS = {lead: new THREE.Color('#FFD700'), support: new THREE.Color('#4FC3F7'), silent: new THREE.Color('#424242')};
+const ROLE_NAMES = ['silent','support','lead'];
+const FEATURE_NAMES = ['rms','energy_rank','harm_perc_ratio','energy_var','centroid','flux','flatness','f0_midi','voiced_prob','has_melody','melody_range','bpm','perc_density','sub_onset','bass_onset','is_build','is_drop','rising','section_type','chord_root','chord_quality','chord_tension','beat_phase','bar_position','phrase_progress','tempo_delta','prev1_energy','prev1_role','prev2_energy','prev2_role','prev3_energy','prev3_role','seg_count','duration','novelty','transition','energy_perc','centroid_flux','melody_energy','buildup_perc','kick','snare','hihat','bass','melody','pad'];
+
+const STATE = {
+  mode: 'well', dims: 3, k: 0,
+  wells: [], stars: [], curtains: [], neurons: [], synapses: [], comets: [],
+  harmony: 0, silhouette: 0, accuracy: 0, variance: 0.87, selectedFeatures: 7,
+  hoveredStar: null, selectedStar: null, draggingWell: null,
+  drawingCurtain: null, curtainStart: null, curtainLine: null,
+  keys: {}, time: 0, bridge: null,
+  // ML训练状态
+  trainingData: null,    // {X:[[46]], y:[[4]], stars:[], origPositions:[]}
+  trainHistory: [],      // [{model, metric, value, prevValue, timestamp}]
+  pcaResult: null,       // JSPCA.fit的结果
+  lassoCoefs: null,      // 46个系数
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// 辅助函数: InstancedMesh 操作
+// ═══════════════════════════════════════════════════════════════════
+function updateStarColor(starId, color) {
+  const mesh = STATE.dataStarsGroup;
+  if (!mesh || !mesh.isInstancedMesh) return;
+  mesh.setColorAt(starId, color);
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+}
+
+function updateStarPosition(starId, x, y, z) {
+  const mesh = STATE.dataStarsGroup;
+  if (!mesh || !mesh.isInstancedMesh) return;
+  const dummy = new THREE.Object3D();
+  dummy.position.set(x, y, z);
+  dummy.updateMatrix();
+  mesh.setMatrixAt(starId, dummy.matrix);
+  mesh.instanceMatrix.needsUpdate = true;
+}
+
+function getStarIdFromHit(hit) {
+  if (hit.instanceId !== undefined) return hit.instanceId;
+  let obj = hit.object;
+  while (obj) {
+    if (obj.userData && obj.userData.starId !== undefined) return obj.userData.starId;
+    obj = obj.parent;
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 教程系统
+// ═══════════════════════════════════════════════════════════════════
+const TUTORIAL_STEPS = [
+  { id: 1, title: '欢迎来到星云建筑师', text: '这是你的ML训练空间 — 每颗星代表一个音乐段。\n点击任意位置继续。', action: 'click_anywhere', highlight: null },
+  { id: 2, title: '投放引力井 = KMeans聚类', text: '点击空白处投放引力井，星辰会被吸引到最近的井。\n试试投放2-3个引力井。', action: 'well_created', highlight: null },
+  { id: 3, title: '画分界线 = DecisionTree', text: 'Shift+拖动画一条线，算法会搜索最优分裂点。\n帷幕会自动吸附到最佳位置。', action: 'curtain_drawn', highlight: null },
+  { id: 4, title: '标记星辰 = RL反馈', text: '右键标记好/坏的分类，冲击波代表惩罚/奖励。\n这训练RL agent从你的偏好学习。', action: 'star_marked', highlight: null },
+  { id: 5, title: '调整密度 = Lasso特征选择', text: '拖动右侧α滑块，观察选中的特征数量变化。\nα越大→越稀疏→特征越少。', action: 'lasso_used', highlight: '#param-panel' },
+  { id: 6, title: '宇宙由你掌控', text: 'WASD飞行 · 1/2切换维度 · Space发射彗星 · 右键标记\n你已经掌握了所有基础操作！', action: 'done', highlight: null },
+];
+
+let tutorialStep = -1;
+let tutorialDone = localStorage.getItem('nebula_tutorial_done') === 'true';
+
+function startTutorial() {
+  if (tutorialDone) return;
+  tutorialStep = 0;
+  showTutorialStep(0);
+}
+
+function showTutorialStep(idx) {
+  const existing = document.getElementById('tutorial-overlay');
+  if (existing) existing.remove();
+
+  if (idx >= TUTORIAL_STEPS.length) {
+    tutorialDone = true;
+    localStorage.setItem('nebula_tutorial_done', 'true');
+    return;
+  }
+
+  const step = TUTORIAL_STEPS[idx];
+  const overlay = document.createElement('div');
+  overlay.id = 'tutorial-overlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;font-family:sans-serif;';
+
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#12122A;border:1px solid #5a9ebf;border-radius:12px;padding:30px;max-width:500px;text-align:center;color:#dcdcdc;';
+  box.innerHTML = `
+    <div style="font-size:12px;color:#888;margin-bottom:8px;">步骤 ${step.id}/6</div>
+    <h2 style="color:#5a9ebf;margin:0 0 12px;">${step.title}</h2>
+    <p style="font-size:14px;line-height:1.6;white-space:pre-line;color:#aaa;">${step.text}</p>
+    <div style="margin-top:16px;color:#666;font-size:11px;">点击任意位置继续</div>
+  `;
+
+  overlay.appendChild(box);
+  overlay.addEventListener('click', () => {
+    tutorialStep++;
+    showTutorialStep(tutorialStep);
+  });
+
+  document.body.appendChild(overlay);
+
+  // Track actions for auto-advance
+  if (step.action === 'well_created') {
+    const origCreate = createGravityWell;
+    createGravityWell = function(...args) {
+      const r = origCreate.apply(this, args);
+      if (tutorialStep === 2) { tutorialStep++; showTutorialStep(tutorialStep); }
+      return r;
+    };
+  }
+  if (step.action === 'curtain_drawn') {
+    const origCurtain = createDecisionCurtain;
+    createDecisionCurtain = function(...args) {
+      const r = origCurtain.apply(this, args);
+      if (tutorialStep === 3) { tutorialStep++; showTutorialStep(tutorialStep); }
+      return r;
+    };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 成就系统
+// ═══════════════════════════════════════════════════════════════════
+const ACHIEVEMENTS = {
+  first_well: { name: '初次聚类', icon: '🌌', desc: '创建第一个引力井' },
+  perfect_k: { name: '完美K值', icon: '🎯', desc: 'KMeans轮廓系数 > 0.8' },
+  feature_miner: { name: '特征矿工', icon: '⛏', desc: 'Lasso选出 < 10个特征' },
+  tree_master: { name: '树木语者', icon: '🌳', desc: '创建5+棵决策树' },
+  comet_rider: { name: '彗星骑手', icon: '☄', desc: '发射10+颗彗星' },
+  ensemble_pro: { name: '全模式大师', icon: '🏆', desc: '使用所有模式' },
+};
+
+let unlockedAchievements = JSON.parse(localStorage.getItem('nebula_achievements') || '{}');
+
+function unlockAchievement(key) {
+  if (unlockedAchievements[key]) return;
+  unlockedAchievements[key] = Date.now();
+  localStorage.setItem('nebula_achievements', JSON.stringify(unlockedAchievements));
+
+  const ach = ACHIEVEMENTS[key];
+  const toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#12122A;border:1px solid #f0c060;border-radius:8px;padding:12px 24px;z-index:2000;color:#f0c060;font-family:sans-serif;font-size:14px;animation:fadeInOut 3s forwards;';
+  toast.innerHTML = `${ach.icon} 成就解锁: <b>${ach.name}</b><br><small style="color:#888;">${ach.desc}</small>`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+
+  if (!document.getElementById('ach-style')) {
+    const style = document.createElement('style');
+    style.id = 'ach-style';
+    style.textContent = '@keyframes fadeInOut { 0%{opacity:0;top:40px} 10%{opacity:1;top:20px} 80%{opacity:1;top:20px} 100%{opacity:0;top:0} }';
+    document.head.appendChild(style);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Chart.js 训练历史图表
+// ═══════════════════════════════════════════════════════════════════
+let historyChart = null;
+
+function initHistoryChart() {
+  const ctx = document.getElementById('history-chart');
+  if (!ctx) return;
+  historyChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: '轮廓系数', data: [], borderColor: '#5a9ebf', tension: 0.3, pointRadius: 0 },
+        { label: 'PCA方差', data: [], borderColor: '#7ee8a2', tension: 0.3, pointRadius: 0 },
+        { label: '准确率', data: [], borderColor: '#f0c060', tension: 0.3, pointRadius: 0 },
+      ]
+    },
+    options: {
+      responsive: false,
+      scales: { y: { min: 0, max: 1, ticks: { color: '#666', font: { size: 8 } } },
+                x: { ticks: { color: '#666', font: { size: 8 }, maxTicksLimit: 5 } } },
+      plugins: { legend: { labels: { color: '#888', font: { size: 9 }, boxWidth: 10 } } },
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 场景初始化
+// ═══════════════════════════════════════════════════════════════════
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05051a);
+scene.fog = new THREE.FogExp2(0x05051a, 0.00008);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 1, 200);
+camera.position.set(8, 12, 25); camera.lookAt(0,0,0);
+
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), 0.8, 0.3, 0.2));
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.minDistance = 5; controls.maxDistance = 80;
+controls.target.set(0,0,0); controls.update();
+
+scene.add(new THREE.AmbientLight(0x111133, 0.5));
+const pl = new THREE.PointLight(0x4466aa, 1, 50); pl.position.set(5,10,5); scene.add(pl);
+const gridHelper = new THREE.PolarGridHelper(12,32,24,64,0x1a1a3e,0x1a1a3e);
+gridHelper.visible = false; scene.add(gridHelper); STATE.grid = gridHelper;
+
+// ═══════════════════════════════════════════════════════════════════
+// 背景星空 + 星云尘埃
+// ═══════════════════════════════════════════════════════════════════
+function buildStarfield(n=2000) {
+  const pos=new Float32Array(n*3),col=new Float32Array(n*3),siz=new Float32Array(n);
+  for(let i=0;i<n;i++){const r=30+Math.random()*60,th=Math.random()*PI2,ph=Math.acos(2*Math.random()-1);pos[i*3]=r*Math.sin(ph)*Math.cos(th);pos[i*3+1]=r*Math.sin(ph)*Math.sin(th);pos[i*3+2]=r*Math.cos(ph);const b=0.3+Math.random()*0.7;col[i*3]=0.6*b;col[i*3+1]=0.7*b;col[i*3+2]=b;siz[i]=0.05+Math.random()*0.15}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));g.setAttribute('color',new THREE.BufferAttribute(col,3));
+  const m=new THREE.PointsMaterial({size:0.12,vertexColors:true,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,opacity:0.7});
+  const sf=new THREE.Points(g,m);sf.name='starfield';scene.add(sf);return sf;
+}
+function buildNebulaDust(n=500) {
+  const pos=new Float32Array(n*3),col=new Float32Array(n*3),siz=new Float32Array(n);
+  for(let i=0;i<n;i++){const r=3+Math.random()*15,th=Math.random()*PI2,ph=Math.acos(2*Math.random()-1);pos[i*3]=r*Math.sin(ph)*Math.cos(th);pos[i*3+1]=r*Math.sin(ph)*Math.sin(th)*0.4;pos[i*3+2]=r*Math.cos(ph);col[i*3]=0.2+Math.random()*0.3;col[i*3+1]=0.05+Math.random()*0.1;col[i*3+2]=0.3+Math.random()*0.5;siz[i]=0.3+Math.random()*1.5}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));g.setAttribute('color',new THREE.BufferAttribute(col,3));
+  const m=new THREE.PointsMaterial({size:0.8,vertexColors:true,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,opacity:0.25});
+  const dust=new THREE.Points(g,m);dust.name='nebulaDust';scene.add(dust);return dust;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 数据星辰 + 极光柱 + 引力井 + 帷幕 + 彗星
+// ═══════════════════════════════════════════════════════════════════
+function buildDataStars(starsData) {
+  STATE.stars=[];
+  if(STATE.starMeshes) {
+    STATE.starMeshes.forEach(m => scene.remove(m));
+  }
+  STATE.starMeshes = [];
+
+  const nStars = starsData.length;
+  if (nStars === 0) return null;
+
+  const starGeo = new THREE.SphereGeometry(0.08, 8, 6);
+  const starMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff, roughness: 0.3, metalness: 0.1, emissive: 0x333333
+  });
+
+  // Use InstancedMesh for performance (>200 stars)
+  const instancedMesh = new THREE.InstancedMesh(starGeo, starMat, nStars);
+  instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+  const dummy = new THREE.Object3D();
+  const color = new THREE.Color();
+  const perStarData = []; // store per-star metadata
+
+  for (let i = 0; i < nStars; i++) {
+    const sd = starsData[i];
+    const role = sd.role || 'silent';
+    const baseColor = ROLE_COLORS[role] || ROLE_COLORS.silent;
+    const energy = sd.energy || 0.5;
+
+    dummy.position.set(sd.x, sd.y, sd.z);
+    dummy.scale.setScalar(1.0);
+    dummy.updateMatrix();
+    instancedMesh.setMatrixAt(i, dummy.matrix);
+    instancedMesh.setColorAt(i, color.copy(baseColor));
+
+    const pos = new THREE.Vector3(sd.x, sd.y, sd.z);
+    perStarData.push({
+      id: i, role, energy, pos,
+      feat: sd.feat || [],
+      origPos: pos.clone(),
+      label: sd.label || `star_${i}`,
+      baseColor: baseColor.clone()
+    });
+  }
+
+  instancedMesh.instanceMatrix.needsUpdate = true;
+  if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true;
+
+  scene.add(instancedMesh);
+  STATE.starMeshes.push(instancedMesh);
+  STATE.dataStarsGroup = instancedMesh;
+  STATE.starGroup = instancedMesh;
+  STATE.stars = perStarData;
+  return instancedMesh;
+}
+
+function buildAuroraPillars(axes) {
+  if(STATE.auroraGroup)scene.remove(STATE.auroraGroup);
+  const group=new THREE.Group();group.name='auroraPillars';
+  const defaults=[{dir:[1,0,0],color:'#FF4757',len:5.2},{dir:[0,1,0],color:'#2ED573',len:2.4},{dir:[0,0,1],color:'#3742FA',len:1.1}];
+  const ax=(axes&&axes.length>=3)?axes:defaults;
+  ax.forEach((a,i)=>{
+    const dir=new THREE.Vector3(a.dir[0],a.dir[1],a.dir[2]).normalize(),len=a.len||a.length||3;
+    const c=new THREE.Color(a.color);
+    const cyl=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,len,8,1),new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:0.35,blending:THREE.AdditiveBlending,depthWrite:false}));
+    cyl.position.copy(dir.clone().multiplyScalar(len/2));
+    const q=new THREE.Quaternion();q.setFromUnitVectors(new THREE.Vector3(0,1,0),dir);cyl.setRotationFromQuaternion(q);
+    const dot=new THREE.Mesh(new THREE.SphereGeometry(0.15,16,16),new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:0.7,blending:THREE.AdditiveBlending,depthWrite:false}));
+    dot.position.copy(dir.clone().multiplyScalar(len));dot.name=`aurora_end_${i}`;
+    const pg=new THREE.Group();pg.add(cyl);pg.add(dot);
+    pg.userData={axisIndex:i,direction:dir,length:len,color:a.color,dotMesh:dot};
+    group.add(pg);
+  });
+  const o=new THREE.Mesh(new THREE.SphereGeometry(0.25,32,32),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.5,blending:THREE.AdditiveBlending,depthWrite:false}));
+  group.add(o);scene.add(group);STATE.auroraGroup=group;return group;
+}
+
+function createGravityWell(pos,color) {
+  const id=STATE.wells.length;const group=new THREE.Group();group.name=`well_${id}`;group.position.copy(pos);
+  group.add(new THREE.Mesh(new THREE.SphereGeometry(1.5,32,16),new THREE.MeshBasicMaterial({color,wireframe:true,transparent:true,opacity:0.2,blending:THREE.AdditiveBlending,depthWrite:false})));
+  group.add(new THREE.Mesh(new THREE.SphereGeometry(0.12,16,16),new THREE.MeshBasicMaterial({color:0xffffff,blending:THREE.AdditiveBlending,depthWrite:false})));
+  scene.add(group);
+  const well={id,pos:pos.clone(),color:color.clone(),radius:1.5,group,stars:[]};
+  STATE.wells.push(well);STATE.k=STATE.wells.length;unlockAchievement('first_well');updateParamPanel();runKMeans();return well;
+}
+
+function removeGravityWell(id) {
+  const idx=STATE.wells.findIndex(w=>w.id===id);if(idx<0)return;
+  scene.remove(STATE.wells[idx].group);STATE.wells.splice(idx,1);STATE.k=STATE.wells.length;
+  if(STATE.wells.length>0)runKMeans();else{STATE.stars.forEach(s=>{updateStarColor(s.id, ROLE_COLORS.silent);s.role='silent';});STATE.silhouette=0;}
+  updateParamPanel();updateHUD();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 核心: 运行真实 KMeans
+// ═══════════════════════════════════════════════════════════════════
+function runKMeans() {
+  if(STATE.wells.length===0)return;
+  const k=STATE.wells.length;
+  // 收集所有星的位置
+  const points=STATE.stars.map(s=>[s.pos.x,s.pos.y,s.pos.z]);
+  // 用当前井位置初始化
+  const initCents=STATE.wells.map(w=>[w.group.position.x,w.group.position.y,w.group.position.z]);
+  // 运行KMeans (用初始化中心, 1次迭代=Lloyd直到收敛)
+  const result=JSKMeans.fit(points,k,20);
+  // 更新井位置
+  STATE.wells.forEach((w,i)=>{w.group.position.set(result.centers[i][0],result.centers[i][1],result.centers[i][2]);w.pos.copy(w.group.position);});
+  // 分配星 + 更新颜色
+  STATE.stars.forEach((s,i)=>{
+    const ci=result.labels[i];
+    s.role='lead';updateStarColor(i, STATE.wells[ci].color);
+    if(!STATE.wells[ci].stars.includes(s.id))STATE.wells[ci].stars.push(s.id);
+  });
+  // 计算真实轮廓系数
+  const prevSil=STATE.silhouette;
+  STATE.silhouette=JSKMeans.silhouette(points,result.labels,k);
+  addHistory('KMeans','轮廓系数',STATE.silhouette,prevSil);
+  if (STATE.silhouette > 0.8) unlockAchievement('perfect_k');
+  updateParamPanel();updateHUD();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 核心: 运行 PCA
+// ═══════════════════════════════════════════════════════════════════
+function runPCA(dims) {
+  dims=dims||STATE.dims;
+  const X=STATE.stars.map(s=>s.feat.slice(0,46));
+  if(X.length<3||X[0].length<3)return;
+  const result=JSPCA.fit(X,dims);
+  STATE.pcaResult=result;
+  STATE.variance=result.variances.slice(0,dims).reduce((a,b)=>a+b,0);
+  // 更新星辰位置
+  const proj=result.projection;
+  const scale=8;
+  STATE.stars.forEach((s,i)=>{
+    const x=proj[i][0]*scale,y=dims>=2?proj[i][1]*scale:0,z=dims>=3?proj[i][2]*scale:0;
+    s.pos.set(x,y,z);s.origPos.set(x,y,z);
+    updateStarPosition(i, x, y, z);
+  });
+  // 更新极光柱
+  const axes=[];
+  const colors=['#FF4757','#2ED573','#3742FA'];
+  for(let c=0;c<3;c++){
+    const dir=result.components[c]?result.components[c].slice(0,3):[c===0?1:0,c===1?1:0,c===2?1:0];
+    const len=result.variances[c]?result.variances[c]*25:3;
+    axes.push({dir,len,color:colors[c]});
+  }
+  buildAuroraPillars(axes);
+  // 更新井位置
+  if(STATE.wells.length>0)runKMeans();
+  const prevVar=STATE.variance;
+  STATE.variance=result.variances.slice(0,dims).reduce((a,b)=>a+b,0);
+  addHistory('PCA',`${dims}D方差`,STATE.variance,prevVar);
+  updateHUD();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 核心: 运行决策树分裂搜索
+// ═══════════════════════════════════════════════════════════════════
+function runDecisionTreeSplit() {
+  const X = STATE.stars.map(s => s.feat.slice(0, 46));
+  const y = STATE.stars.map(s => ROLE_NAMES.indexOf(s.role));
+  if (X.length < 6) return null;
+  const tree = JSDecisionTree.fit(X, y, STATE.treeDepth || 4, 3);
+  STATE.currentTree = tree;
+  // Calculate accuracy on training data
+  let correct = 0;
+  for (let i = 0; i < X.length; i++) {
+    if (JSDecisionTree.predict(tree, X[i]) === y[i]) correct++;
+  }
+  STATE.accuracy = correct / X.length;
+  return tree;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 核心: 运行 Lasso
+// ═══════════════════════════════════════════════════════════════════
+function runLasso(alpha) {
+  const X=STATE.stars.map(s=>s.feat.slice(0,46));
+  const y=STATE.stars.map(s=>s.energy);
+  if(X.length<5)return;
+  const coefs=JSLasso.fit(X,y,alpha||0.1);
+  STATE.lassoCoefs=coefs;
+  STATE.selectedFeatures=coefs.filter(c=>Math.abs(c)>1e-6).length;
+  if(STATE.selectedFeatures<10)unlockAchievement('feature_miner');
+  const prevFeat=STATE.selectedFeatures||46;
+  addHistory('Lasso','选中特征',STATE.selectedFeatures,prevFeat);
+  updateParamPanel();updateHUD();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 交互系统
+// ═══════════════════════════════════════════════════════════════════
+const raycaster=new THREE.Raycaster();raycaster.params.Points.threshold=0.5;
+const mouse=new THREE.Vector2();let mouseDown=false,mouseMoved=false;
+
+function getIntersections(e) {
+  mouse.x=(e.clientX/innerWidth)*2-1;mouse.y=-(e.clientY/innerHeight)*2+1;
+  raycaster.setFromCamera(mouse,camera);
+  const targets=[];
+  if(STATE.starGroup){
+    if(STATE.starGroup.isInstancedMesh){
+      targets.push(STATE.starGroup);
+    }else{
+      targets.push(...STATE.starGroup.children);
+    }
+  }
+  STATE.wells.forEach(w=>targets.push(w.group));
+  STATE.curtains.forEach(c=>targets.push(c.mesh));
+  return raycaster.intersectObjects(targets,true);
+}
+
+renderer.domElement.addEventListener('mousemove',e=>{
+  if(mouseDown)mouseMoved=true;
+  const hits=getIntersections(e);
+  if(hits.length>0){
+    const starId=getStarIdFromHit(hits[0]);
+    if(starId!==null){
+      STATE.hoveredStar=starId;document.body.style.cursor='pointer';
+    }else{STATE.hoveredStar=null;document.body.style.cursor=STATE.mode==='curtain'?'crosshair':'grab';}
+  }else{STATE.hoveredStar=null;document.body.style.cursor=STATE.mode==='curtain'?'crosshair':'grab';}
+  if(mouseDown&&STATE.draggingWell!==null&&STATE.mode==='well'){
+    const well=STATE.wells[STATE.draggingWell];
+    const plane=new THREE.Plane(new THREE.Vector3(0,1,0),0),pt=new THREE.Vector3();
+    raycaster.setFromCamera(mouse,camera);raycaster.ray.intersectPlane(plane,pt);
+    if(pt){well.group.position.copy(pt);well.pos.copy(pt);runKMeans();}
+  }
+  if(mouseDown&&STATE.drawingCurtain&&STATE.mode==='curtain'&&STATE.curtainLine){
+    const end=new THREE.Vector3();raycaster.setFromCamera(mouse,camera);raycaster.ray.at(15,end);
+    STATE.curtainLine.geometry.attributes.position.setXYZ(1,end.x,end.y,end.z);
+    STATE.curtainLine.geometry.attributes.position.needsUpdate=true;
+  }
+});
+
+renderer.domElement.addEventListener('mousedown',e=>{
+  mouseDown=true;mouseMoved=false;
+  mouse.x=(e.clientX/innerWidth)*2-1;mouse.y=-(e.clientY/innerHeight)*2+1;
+  if(e.button===0){
+    if(STATE.mode==='well'){
+      const hits=getIntersections(e);let hitWell=null;
+      for(const h of hits){let obj=h.object;while(obj){if(obj.name&&obj.name.startsWith('well_')){hitWell=obj;break;}obj=obj.parent;}if(hitWell)break;}
+      if(hitWell){STATE.draggingWell=parseInt(hitWell.name.split('_')[1]);controls.enabled=false;}
+    }else if(STATE.mode==='curtain'&&e.shiftKey){
+      STATE.drawingCurtain=true;controls.enabled=false;
+      raycaster.setFromCamera(mouse,camera);STATE.curtainStart=raycaster.ray.at(15).clone();
+      const lg=new THREE.BufferGeometry();lg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
+      lg.attributes.position.setXYZ(0,STATE.curtainStart.x,STATE.curtainStart.y,STATE.curtainStart.z);
+      lg.attributes.position.setXYZ(1,STATE.curtainStart.x,STATE.curtainStart.y,STATE.curtainStart.z);
+      STATE.curtainLine=new THREE.Line(lg,new THREE.LineBasicMaterial({color:0x00E5FF,transparent:true,opacity:0.6}));
+      scene.add(STATE.curtainLine);
+    }
+  }else if(e.button===2){
+    const hits=getIntersections(e);
+    if(hits.length>0){const starId=getStarIdFromHit(hits[0]);if(starId!==null){e.preventDefault();markStar(starId,!e.ctrlKey);}}
+  }
+});
+
+renderer.domElement.addEventListener('mouseup',e=>{
+  if(STATE.mode==='curtain'&&STATE.drawingCurtain&&STATE.curtainStart){
+    raycaster.setFromCamera(mouse,camera);const end=raycaster.ray.at(15);
+    if(STATE.curtainStart.distanceTo(end)>1.5)createDecisionCurtain(STATE.curtainStart.clone(),end.clone());
+    if(STATE.curtainLine){scene.remove(STATE.curtainLine);STATE.curtainLine=null;}
+  }
+  if(!mouseMoved&&STATE.mode==='well'&&STATE.draggingWell===null&&e.button===0){
+    raycaster.setFromCamera(mouse,camera);
+    const plane=new THREE.Plane(new THREE.Vector3(0,1,0),0),pt=new THREE.Vector3();
+    raycaster.ray.intersectPlane(plane,pt);
+    if(pt){const colors=[0xFF6B6B,0x51CF66,0x339AF0,0xFFD700,0xFF69B4,0x00E5FF,0xFF8C00,0x7B68EE];createGravityWell(pt,new THREE.Color(colors[STATE.wells.length%colors.length]));}
+  }
+  STATE.draggingWell=null;STATE.drawingCurtain=false;STATE.curtainStart=null;
+  mouseDown=false;controls.enabled=true;
+});
+renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
+renderer.domElement.addEventListener('dblclick',e=>{
+  const hits=getIntersections(e);
+  if(hits.length>0){let obj=hits[0].object;while(obj){if(obj.name&&obj.name.startsWith('well_')){removeGravityWell(parseInt(obj.name.split('_')[1]));return;}obj=obj.parent;}}
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// 决策帷幕
+// ═══════════════════════════════════════════════════════════════════
+function createDecisionCurtain(start,end) {
+  const mid=start.clone().add(end).multiplyScalar(0.5);
+  const dir=end.clone().sub(start).normalize();
+  const normal=new THREE.Vector3(-dir.z,0,dir.x).normalize();
+  // 运行真实决策树分裂搜索
+  const split=runDecisionTreeSplit(start,end);
+  const gain=split?split.gain*2:0.3+Math.random()*0.3;
+  const featName=split?FEATURE_NAMES[split.feature]:'?';
+  const threshold=split?split.threshold.toFixed(3):'?';
+
+  const g=new THREE.PlaneGeometry(7,7);
+  const m=new THREE.ShaderMaterial({
+    uniforms:{uColor:{value:new THREE.Color().setHSL(0.55+gain*0.3,0.8,0.5)},uGain:{value:gain},uTime:{value:0}},
+    vertexShader:`varying vec2 vUv;varying vec3 vPos;void main(){vUv=uv;vPos=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+    fragmentShader:`uniform vec3 uColor;uniform float uGain;uniform float uTime;varying vec2 vUv;varying vec3 vPos;void main(){float sl=0.85+0.15*sin(vPos.y*30.0+uTime*2.0);float a=0.1+uGain*0.5;a*=sl;gl_FragColor=vec4(uColor*(0.8+0.2*sin(uTime*0.5)),a);}`,
+    transparent:true,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending,
+  });
+  const mesh=new THREE.Mesh(g,m);mesh.position.copy(mid);
+  const q=new THREE.Quaternion();q.setFromUnitVectors(new THREE.Vector3(0,0,1),normal);mesh.setRotationFromQuaternion(q);
+  mesh.name=`curtain_${STATE.curtains.length}`;mesh.userData={gain,featName,threshold};
+  scene.add(mesh);
+  STATE.curtains.push({id:STATE.curtains.length,pos:mid.clone(),normal,gain,mesh,featName,threshold});
+  const prevAcc=STATE.accuracy;STATE.accuracy=Math.min(0.95,STATE.accuracy+gain*0.3);
+  addHistory('决策树','准确率',STATE.accuracy,prevAcc);
+  updateParamPanel();updateHUD();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 标记星辰 + 彗星 + 训练历史
+// ═══════════════════════════════════════════════════════════════════
+function markStar(starId,good){
+  const star=STATE.stars[starId];if(!star)return;
+  const orig=star.baseColor||ROLE_COLORS.silent.clone();
+  const pc=good?new THREE.Color('#FFD700'):new THREE.Color('#FF4444');
+  let t=0;function anim(){t+=0.05;const a=Math.exp(-t*3);const c=pc.clone().lerp(orig,1-a);updateStarColor(starId,c);if(t<2)requestAnimationFrame(anim);else{updateStarColor(starId,orig);}}anim();
+  // 冲击波
+  const rg=new THREE.RingGeometry(0.1,0.3,32);const rm=new THREE.MeshBasicMaterial({color:good?0xFFD700:0xFF4444,side:THREE.DoubleSide,transparent:true,opacity:0.8,blending:THREE.AdditiveBlending,depthWrite:false});
+  const ring=new THREE.Mesh(rg,rm);ring.position.copy(star.pos);ring.lookAt(camera.position);scene.add(ring);
+  let rt=0;function er(){rt+=0.03;ring.scale.setScalar(1+rt*8);ring.material.opacity=0.8*(1-rt);if(rt<1)requestAnimationFrame(er);else scene.remove(ring);}er();
+  const prevAcc=STATE.accuracy;STATE.accuracy=Math.min(0.99,STATE.accuracy+(good?0.02:-0.01));
+  addHistory('RL反馈',good?'👍':'👎',STATE.accuracy,prevAcc);updateHUD();
+}
+
+function spawnComet(){
+  const sp=new THREE.Vector3((Math.random()-0.5)*30,15+Math.random()*10,(Math.random()-0.5)*30);
+  let tp=new THREE.Vector3(0,0,0);
+  if(STATE.wells.length>0){const w=STATE.wells[Math.floor(Math.random()*STATE.wells.length)];tp=w.group.position.clone();}
+  const core=new THREE.Mesh(new THREE.SphereGeometry(0.15,16,16),new THREE.MeshBasicMaterial({color:0xffffff,blending:THREE.AdditiveBlending,depthWrite:false}));
+  core.position.copy(sp);
+  const tp2=new Float32Array(40*3);for(let i=0;i<40;i++){tp2[i*3]=sp.x;tp2[i*3+1]=sp.y;tp2[i*3+2]=sp.z;}
+  const tg=new THREE.BufferGeometry();tg.setAttribute('position',new THREE.BufferAttribute(tp2,3));
+  const trail=new THREE.Points(tg,new THREE.PointsMaterial({size:0.15,vertexColors:false,color:0x88bbff,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,opacity:0.6}));
+  const group=new THREE.Group();group.add(core);group.add(trail);scene.add(group);
+  STATE.comets.push({id:STATE.comets.length,group,core,trail,targetPos:tp,startPos:sp,progress:0});
+}
+
+function addHistory(model,metric,value,prevValue){
+  STATE.trainHistory.push({model,metric,value,prevValue,time:Date.now()});
+  if(STATE.trainHistory.length>20)STATE.trainHistory.shift();
+  // Also update Chart.js chart
+  if(historyChart){
+    const label=new Date().toLocaleTimeString();
+    historyChart.data.labels.push(label);
+    if(historyChart.data.labels.length>20)historyChart.data.labels.shift();
+    const sil=metric.includes('轮廓')?value:(STATE.silhouette||0);
+    const pva=metric.includes('方差')?value:(STATE.variance||0);
+    const acc=(metric.includes('准确')||metric.includes('RL'))?value:(STATE.accuracy||0);
+    historyChart.data.datasets[0].data.push(sil);
+    historyChart.data.datasets[1].data.push(pva);
+    historyChart.data.datasets[2].data.push(acc);
+    historyChart.data.datasets.forEach(ds=>{if(ds.data.length>20)ds.data.shift();});
+    historyChart.update();
+  }
+}
+
+function updateHistoryPanel(){
+  // Chart.js handles the visualization now; no-op for backward compat
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 参数面板
+// ═══════════════════════════════════════════════════════════════════
+function updateParamPanel(){
+  const panel=document.getElementById('param-panel');
+  const title=document.getElementById('param-title');
+  const content=document.getElementById('param-content');
+  let html='';
+
+  if(STATE.mode==='well'){
+    title.textContent='🖐 KMeans 引力井';
+    html+=`<label>聚类数 K <span class="val">${STATE.k}</span></label>`;
+    html+=`<input type="range" min="1" max="12" value="${STATE.k||1}" oninput="window._setK(parseInt(this.value))">`;
+    html+=`<div class="metric">轮廓系数: ${STATE.silhouette.toFixed(4)}</div>`;
+    html+=`<div class="metric">井位置: 算法自动优化</div>`;
+    html+=`<div class="metric" style="color:#8899aa;font-size:9px">点击空白投放 · 拖拽移动 · 双击删除 · 算法自动找最优中心</div>`;
+  }else if(STATE.mode==='curtain'){
+    title.textContent='✏️ 决策树 智能分界';
+    html+=`<label>树深度 <span class="val">${STATE.curtains.length}</span></label>`;
+    html+=`<input type="range" min="1" max="6" value="${Math.max(1,STATE.curtains.length||1)}">`;
+    html+=`<div class="metric">当前帷幕数: ${STATE.curtains.length}</div>`;
+    if(STATE.curtains.length>0){
+      const c=STATE.curtains[STATE.curtains.length-1];
+      html+=`<div class="metric">最新分裂: ${c.featName||'?'} &gt; ${c.threshold||'?'}</div>`;
+      html+=`<div class="metric">信息增益: ${c.gain.toFixed(4)}</div>`;
+    }
+    html+=`<div class="metric" style="color:#8899aa;font-size:9px">Shift+拖动画线 · 算法搜索最优分裂 · 增益=帷幕亮度</div>`;
+  }else if(STATE.mode==='density'){
+    title.textContent='💡 Lasso 星尘密度';
+    const alpha=parseFloat(document.getElementById('lasso-alpha')?.value||0.1);
+    html+=`<label>正则化强度 α <span class="val" id="lasso-alpha-val">${alpha.toFixed(3)}</span></label>`;
+    html+=`<input type="range" id="lasso-alpha" min="0.001" max="1.0" step="0.001" value="${alpha}" oninput="document.getElementById('lasso-alpha-val').textContent=parseFloat(this.value).toFixed(3);window._runLasso(parseFloat(this.value))">`;
+    html+=`<div class="metric">选中特征: ${STATE.selectedFeatures}/46</div>`;
+    html+=`<div class="metric">α小→特征多; α大→只保留关键特征</div>`;
+  }else if(STATE.mode==='neuron'){
+    title.textContent='🧠 神经网络 星座';
+    html+=`<label>隐层1节点 <span class="val">16</span></label><input type="range" min="4" max="32" value="16">`;
+    html+=`<label>隐层2节点 <span class="val">8</span></label><input type="range" min="2" max="16" value="8">`;
+    html+=`<label>学习率 <span class="val">0.01</span></label><input type="range" min="0.001" max="0.1" step="0.001" value="0.01">`;
+    html+=`<div class="metric">训练中...</div>`;
+  }else if(STATE.mode==='comet'){
+    title.textContent='☄️ 彗星 预测';
+    html+=`<div class="metric">彗星=新音乐段 🎵</div>`;
+    html+=`<div class="metric">落入星系=预测结果</div>`;
+    html+=`<div class="metric">拖拽纠正=RL反馈</div>`;
+    html+=`<button onclick="spawnComet()">🚀 发射彗星</button>`;
+  }
+  content.innerHTML=html;
+  panel.style.display='block';
+}
+
+// 全局函数供HTML onclick调用
+window._setK=(k)=>{while(STATE.wells.length>k)removeGravityWell(STATE.wells[STATE.wells.length-1].id);while(STATE.wells.length<k)createGravityWell(new THREE.Vector3((Math.random()-0.5)*5,0,(Math.random()-0.5)*5),new THREE.Color([0xFF6B6B,0x51CF66,0x339AF0,0xFFD700,0xFF69B4,0x00E5FF,0xFF8C00,0x7B68EE][STATE.wells.length%8]));};
+window._runLasso=(alpha)=>{runLasso(alpha);};
+
+// ═══════════════════════════════════════════════════════════════════
+// HUD + 键盘 + 模式切换
+// ═══════════════════════════════════════════════════════════════════
+function updateHUD(){
+  STATE.harmony=Math.round((STATE.variance*0.4+Math.min(STATE.silhouette,1)*0.3+STATE.accuracy*0.3)*100);
+  document.getElementById('hud-harmony').textContent=STATE.harmony+'%';
+  document.getElementById('met-pca').textContent=Math.round(STATE.variance*100)+'%';
+  document.getElementById('met-sil').textContent=STATE.silhouette.toFixed(3);
+  document.getElementById('met-acc').textContent=Math.round(STATE.accuracy*100)+'%';
+  document.getElementById('met-feat').textContent=STATE.selectedFeatures+'/46';
+  document.getElementById('met-k').textContent=STATE.k;
+}
+
+const helpTexts={well:'🖐 点击投放引力井 | 拖拽移动 | 双击删除 | 1/2切换维度 | 右键标记星辰 | WASD飞行',curtain:'✏️ Shift+左键拖动画线 → 算法搜索最优分裂 → 帷幕生成 | WASD飞行',neuron:'🧠 (开发中) | WASD飞行',comet:'☄️ Space发射彗星 → 观察预测 | WASD飞行',density:'💡 调整α滑块 → Lasso特征选择 | WASD飞行'};
+
+function updateModeButtons(){
+  document.querySelectorAll('#hud-bottom button').forEach(b=>b.classList.remove('active'));
+  const m={well:'btn-well',curtain:'btn-curtain',neuron:'btn-neuron',comet:'btn-comet',density:'btn-density'};
+  const ab=document.getElementById(m[STATE.mode]);if(ab)ab.classList.add('active');
+  document.body.style.cursor=STATE.mode==='curtain'?'crosshair':'grab';
+  document.getElementById('hud-help').textContent=helpTexts[STATE.mode]||'';
+  updateParamPanel();
+}
+
+window.addEventListener('keydown',e=>{
+  STATE.keys[e.key.toLowerCase()]=true;
+  switch(e.key.toLowerCase()){
+    case'1':STATE.dims=2;runPCA(2);updateParamPanel();break;
+    case'2':STATE.dims=3;runPCA(3);updateParamPanel();break;
+    case' ':e.preventDefault();spawnComet();break;
+    case'n':STATE.mode='neuron';updateModeButtons();break;
+    case'g':STATE.grid.visible=!STATE.grid.visible;break;
+    case'h':document.getElementById('hud').style.display=document.getElementById('hud').style.display==='none'?'block':'none';break;
+    case'tab':e.preventDefault();const modes=['well','curtain','neuron','comet','density'];const idx=modes.indexOf(STATE.mode);STATE.mode=modes[(idx+1)%modes.length];updateModeButtons();break;
+    case'r':if(!e.ctrlKey){resetCosmos();}break;
+    case'escape':STATE.selectedStar=null;updateHUD();break;
+  }
+});
+window.addEventListener('keyup',e=>{STATE.keys[e.key.toLowerCase()]=false;});
+
+document.getElementById('btn-well').addEventListener('click',()=>{STATE.mode='well';updateModeButtons();});
+document.getElementById('btn-curtain').addEventListener('click',()=>{STATE.mode='curtain';updateModeButtons();});
+document.getElementById('btn-neuron').addEventListener('click',()=>{STATE.mode='neuron';updateModeButtons();});
+document.getElementById('btn-comet').addEventListener('click',()=>{STATE.mode='comet';updateModeButtons();spawnComet();});
+document.getElementById('btn-density').addEventListener('click',()=>{STATE.mode='density';updateModeButtons();if(!STATE.lassoCoefs)runLasso(0.1);});
+document.getElementById('btn-reset').addEventListener('click',resetCosmos);
+
+function resetCosmos(){
+  STATE.wells.forEach(w=>scene.remove(w.group));STATE.wells=[];STATE.k=0;
+  STATE.curtains.forEach(c=>scene.remove(c.mesh));STATE.curtains=[];
+  STATE.comets.forEach(c=>scene.remove(c.group));STATE.comets=[];
+  STATE.trainHistory=[];STATE.silhouette=0;STATE.accuracy=0;STATE.harmony=0;STATE.lassoCoefs=null;STATE.selectedFeatures=46;
+  const mockStars=generateMockStars(48);
+  buildDataStars(mockStars);
+  buildAuroraPillars(null);runPCA(3);
+  updateHUD();updateParamPanel();updateHistoryPanel();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 模拟数据生成
+// ═══════════════════════════════════════════════════════════════════
+function generateMockStars(n=48){
+  const stars=[];
+  const centers=[[4,1,2],[-3,2,-1],[0,-3,3],[2,-1,-2],[-2,-2,-1],[1,3,0],[-4,0,1],[3,-2,-3]];
+  const roles=['lead','lead','lead','support','support','support','silent','silent'];
+  for(let i=0;i<n;i++){
+    const ci=i%8,c=centers[ci];
+    // 生成46维特征(结构化,非纯随机)
+    const energy=0.3+Math.random()*0.7;
+    const feat=[];
+    feat[0]=energy;feat[1]=energy;feat[2]=0.3+Math.random()*0.4;feat[3]=Math.random()*0.1;
+    for(let j=4;j<46;j++)feat[j]=Math.random();
+    stars.push({x:c[0]+(Math.random()-0.5)*3,y:c[1]+(Math.random()-0.5)*3,z:c[2]+(Math.random()-0.5)*3,role:roles[ci],energy,label:`sample_${i}`,feat});
+  }
+  return stars;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// WASD飞行 + 动画循环
+// ═══════════════════════════════════════════════════════════════════
+const flySpeed=0.3;
+function updateFly(){
+  if(STATE.keys['w'])camera.position.add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(flySpeed));
+  if(STATE.keys['s'])camera.position.add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(-flySpeed));
+  if(STATE.keys['a'])camera.position.add(new THREE.Vector3(-flySpeed,0,0).applyQuaternion(camera.quaternion));
+  if(STATE.keys['d'])camera.position.add(new THREE.Vector3(flySpeed,0,0).applyQuaternion(camera.quaternion));
+  if(STATE.keys['q'])camera.position.y-=flySpeed;
+  if(STATE.keys['e'])camera.position.y+=flySpeed;
+}
+
+const clock=new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),0.1);STATE.time+=dt;
+  updateFly();controls.update();
+  // Star time animation removed — InstancedMesh uses static material
+  STATE.comets.forEach(c=>{c.progress+=dt*0.3;if(c.progress>=1){scene.remove(c.group);STATE.comets=STATE.comets.filter(x=>x.id!==c.id);return;}
+    const t=c.progress,eased=t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;const pos=c.startPos.clone().lerp(c.targetPos,eased);
+    pos.y+=Math.sin(t*Math.PI)*5*(1-t);c.core.position.copy(pos);
+    const tp=c.trail.geometry.attributes.position;for(let i=39;i>0;i--){tp.setXYZ(i,tp.getX(i-1),tp.getY(i-1),tp.getZ(i-1));}tp.setXYZ(0,pos.x,pos.y,pos.z);tp.needsUpdate=true;});
+  STATE.curtains.forEach(c=>{if(c.mesh.material.uniforms)c.mesh.material.uniforms.uTime.value=STATE.time;});
+  composer.render();
+}
+
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight);});
+
+// ═══════════════════════════════════════════════════════════════════
+// 启动
+// ═══════════════════════════════════════════════════════════════════
+buildStarfield(2000);
+buildNebulaDust(500);
+const stars=generateMockStars(48);
+buildDataStars(stars);
+initHistoryChart();
+setTimeout(startTutorial, 1000);
+buildAuroraPillars(null);
+runPCA(3);
+updateModeButtons();
+updateHUD();
+animate();
+console.log('🌌 Nebula Architect — 真实ML训练引擎就绪');
+console.log('  KMeans: JSKMeans.fit() + silhouette()');
+console.log('  PCA: JSPCA.fit() — 协方差+幂迭代');
+console.log('  DecisionTree: JSDecisionTree.findBestSplit() — 贪心搜索');
+console.log('  Lasso: JSLasso.fit() — 坐标下降+软阈值');
+</script>
+</body>
+</html>

@@ -118,9 +118,17 @@ def strip_joy_amp(panel, params, channel, owner, override_keys):
     axis = (params.get("_joy_amp_axis", "自动")
             if isinstance(owner, dict) and "group_ids" in owner
             else panel._joy_amp_axis_for_channel(channel, params))
-    if axis != "关闭":
+    selected_key = (f"joy_amplitude_{axis[0].lower()}"
+                    if axis in ("X轴", "Y轴", "Z轴") else None)
+    if axis != "关闭" and selected_key is None:
         return params
-    return {key: value for key, value in params.items() if key not in override_keys}
+    result = {key: value for key, value in params.items() if key not in override_keys}
+    selected = params.get(selected_key) if selected_key is not None else None
+    if selected is not None:
+        # Explicit selection uses this logical source on any output channel.
+        # Missing/None stays unconnected; auto keeps the engine's old fallback.
+        result.update(dict.fromkeys(override_keys, selected))
+    return result
 
 
 def project_groups(panel):

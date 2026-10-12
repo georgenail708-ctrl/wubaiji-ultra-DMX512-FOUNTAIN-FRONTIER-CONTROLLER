@@ -8,7 +8,7 @@ replaced. Binding, serialization, loading, Qt signals, and INI I/O are real.
 import json
 
 import pytest
-from PyQt6.QtCore import QCoreApplication, QObject, QSettings, pyqtSignal
+from PyQt6.QtCore import QObject, QSettings, pyqtSignal
 
 from src.ui import joystick_control_binding as binding
 from src.ui import midi_joystick_driver
@@ -22,13 +22,8 @@ class _IdleMidiDriver(QObject):
     axis3d_changed = pyqtSignal(float, float, float)
 
 
-@pytest.fixture(scope="session")
-def qt_application():
-    return QCoreApplication.instance() or QCoreApplication([])
-
-
 @pytest.fixture
-def isolated_manager(monkeypatch, tmp_path, qt_application):
+def isolated_manager(monkeypatch, tmp_path):
     """Use a fresh on-disk INI and inert signal sources for every test."""
     for variable in ("HOME", "USERPROFILE", "XDG_CONFIG_HOME"):
         monkeypatch.setenv(variable, str(tmp_path))

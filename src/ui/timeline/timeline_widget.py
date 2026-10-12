@@ -1256,8 +1256,8 @@ class TimelineWidget(QWidget):
         if changed:
             self._refresh_clips_targeted(target_ids)
 
-    def _on_clip_auto_smooth(self, clip_id: str, preset_id: str, custom=None):
-        return apply_smoothing(self, clip_id, preset_id, custom)
+    def _on_clip_auto_smooth(self, clip_id: str, preset_id: str, custom=None, *, show_success=True):
+        return apply_smoothing(self, clip_id, preset_id, custom, show_success=show_success)
 
     # ══════════════════════════════════════════════════════════════════════════
     #  优化电机力度（梯形速度曲线 + 加速剖面）

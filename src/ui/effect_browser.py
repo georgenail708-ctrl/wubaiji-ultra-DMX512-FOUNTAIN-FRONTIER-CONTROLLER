@@ -8548,13 +8548,17 @@ def _active_effects_for_save(panel) -> list:
     会自动流转，而 `group_ids`/`base_order_ids` 这类白名单字段不会。
     """
     out = []
+    overrides = getattr(panel, "_param_overrides", {}) or {}
     for (track_type, group_key), st in list(
             getattr(panel, "_external_states", {}).items()):
+        params = dict(st.get("params", {}) or {})
+        # Freeze the current amplitude in this owner, below future live input.
+        params.update({key: overrides[key] for key in _JOY_AMP_OVERRIDE_KEYS if key in overrides})
         out.append({
             "track_type": track_type,
             "group_key": group_key,
             "preset_id": st.get("preset_id", ""),
-            "params": dict(st.get("params", {}) or {}),
+            "params": params,
             "ch_types": list(st.get("ch_types", []) or []),
             "sort_mode": st.get("sort_mode", "index"),
             "group_ids": list(st.get("group_ids", []) or []),

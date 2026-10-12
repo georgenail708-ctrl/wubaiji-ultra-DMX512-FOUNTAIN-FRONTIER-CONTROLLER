@@ -116,8 +116,8 @@ PHASE_ADVANCE_PRESETS: frozenset = frozenset((
     "wave_sine", "wave_square", "wave_triangle",
 ))
 
-#: 几何方向 → 镜像方向。逆向（reverse）保持"与 default 相反"的原义，
-#: 故推进族下映射到 ltr（default 的相位源是 pos_x 投影，即波向 −x）。
+#: Geometric directions mirror by phase family. Reverse keeps the authored
+#: default sequence and must not turn into an x-coordinate scan.
 _MIRROR: Dict[str, str] = {
     "left_to_right": "right_to_left",
     "right_to_left": "left_to_right",
@@ -131,7 +131,6 @@ _MIRROR: Dict[str, str] = {
     "edge_in": "center_out",
     "clockwise": "counterclockwise",
     "counterclockwise": "clockwise",
-    "reverse": "left_to_right",
 }
 
 #: 相位步进类参数：× 1/width（值越大波峰越窄）。

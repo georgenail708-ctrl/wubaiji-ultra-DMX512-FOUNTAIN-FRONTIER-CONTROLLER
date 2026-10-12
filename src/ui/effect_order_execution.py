@@ -22,7 +22,7 @@ def coordinate_phase_enabled(params) -> bool:
     return (direction not in ORDER_DIRECTIONS
             and normalize_spatial_scope(params.get("spatial_scope")) == "global"
             and (bool(params.get("_skip_base_order", False))
-                 or direction != "default"))
+                 or direction not in {"default", "reverse"}))
 
 
 def _inject_order_phases(params, ordered) -> bool:

@@ -1958,6 +1958,10 @@ class ChannelTypeRow(QWidget):
         self._joy_steps: int = 4
         self._joy_coord_mode: str = "cartesian"
         self._joy_space_mode: str = "2d"
+        self._joy_mode = "additive"
+        self._joy_amp_x_target = "joy_amplitude_x"
+        self._joy_amp_y_target = "joy_amplitude_y"
+        self._joy_amp_z_target = "joy_amplitude_z"
         self._is_refreshing: bool = False
         # ★ 性能：主控件（滑块/摇杆）事件 33ms 合并节流。
         #   pending 按 (ch_type, layer) 分槽——不同通道的控件(如 dimmer 滑块 +
@@ -2620,6 +2624,7 @@ class ChannelTypeRow(QWidget):
         sec_jmode = _KitSection("摇杆模式")
         joy_mode_combo = QComboBox()
         joy_mode_combo.addItems(["叠加模式", "幅度控制模式"])
+        joy_mode_combo.setCurrentText("幅度控制模式" if self._joy_mode == "amplitude" else "叠加模式")
         joy_mode_combo.setFixedWidth(130)
         joy_mode_combo.setToolTip(
             "叠加模式=摇杆位置直接驱动通道；幅度控制模式=把摇杆注入效果的参数覆盖")
@@ -2628,14 +2633,17 @@ class ChannelTypeRow(QWidget):
             f"color:{FG_GREEN};font-size:11px;font-weight:bold;background:transparent;")
         amp_x_combo = QComboBox()
         amp_x_combo.addItems(["joy_amplitude_x", "joy_amplitude_y", "joy_amplitude_z", "(不使用)"])
+        amp_x_combo.setCurrentText(self._joy_amp_x_target or "(不使用)")
         amp_x_combo.setFixedWidth(130)
         amp_x_combo.setToolTip("物理摇杆 X 轴注入的效果参数（幅度控制模式生效）")
         amp_y_combo = QComboBox()
         amp_y_combo.addItems(["joy_amplitude_y", "joy_amplitude_x", "joy_amplitude_z", "(不使用)"])
+        amp_y_combo.setCurrentText(self._joy_amp_y_target or "(不使用)")
         amp_y_combo.setFixedWidth(130)
         amp_y_combo.setToolTip("物理摇杆 Y 轴注入的效果参数（幅度控制模式生效）")
         amp_z_combo = QComboBox()
         amp_z_combo.addItems(["joy_amplitude_z", "joy_amplitude_x", "joy_amplitude_y", "(不使用)"])
+        amp_z_combo.setCurrentText(self._joy_amp_z_target or "(不使用)")
         amp_z_combo.setFixedWidth(130)
         amp_z_combo.setToolTip("物理摇杆 Z 轴注入的效果参数（幅度控制模式生效）")
 
@@ -2654,16 +2662,16 @@ class ChannelTypeRow(QWidget):
         amp_config_lay.addWidget(prop_row("Y 轴 →", amp_y_combo))
         amp_config_lay.addWidget(prop_row("Z 轴 →", amp_z_combo))
 
-        amp_config_frame.setVisible(False)  # 默认隐藏（叠加模式时不显示）
+        amp_config_frame.setVisible(self._joy_mode == "amplitude")
         sec_jmode.add_widget(prop_row("模式", joy_mode_combo))
         sec_jmode.add_widget(_indent(amp_config_frame))
         joy_info.addWidget(sec_jmode)
 
         # 存储引用供回调使用
-        self._joy_mode = "additive"  # "additive" | "amplitude"
-        self._joy_amp_x_target = "joy_amplitude_x"
-        self._joy_amp_y_target = "joy_amplitude_y"
-        self._joy_amp_z_target = "joy_amplitude_z"
+        self._joy_mode_combo = joy_mode_combo
+        self._joy_amp_x_combo = amp_x_combo
+        self._joy_amp_y_combo = amp_y_combo
+        self._joy_amp_z_combo = amp_z_combo
         self._joy_amp_config_frame = amp_config_frame
 
         def _on_joy_mode_changed(text, _frame=amp_config_frame):

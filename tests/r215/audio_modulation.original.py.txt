@@ -1,0 +1,149 @@
+from __future__ import annotations
+
+STATE_VERSION = 1
+
+MIN_CLIP_S = 0.05
+
+FADE_INHERIT = -1.0
+
+def normalize_state(state: Optional[dict]) -> dict:
+    """工程里读出的 state 归一化（缺失/非法字段全部给默认；永不抛）。
+
+    R182 Draw 扩展：`sources`/`rules`（编译产物，schema 见 audio_mod_draw_compile）
+    + `draw_graph`（画布编辑态快照，重开恢复，运行时不消费）。`scope_track_id`
+    不在本 schema，由 widget 单独留存回带。R183 3.4b 相位三项缺省 0=旧行为。
+    """
+    s = dict(state) if isinstance(state, dict) else {}
+    return _processor_fields(s, {
+        "version": STATE_VERSION,
+        "audio_sha": _text(s.get("audio_sha")),
+        "scope_folder_id": _text(s.get("scope_folder_id")),
+        "target_ch_types": _targets(s.get("target_ch_types")),
+        "amount": _clamp01(s.get("amount", 1.0)),
+        "attack": max(0.0, _num(s.get("attack"), 0.05)),
+        "release": max(0.0, _num(s.get("release"), 0.2)),
+        "feature": str(s.get("feature", "beat_strength") or "beat_strength"),
+        "default_wave": _text(s.get("default_wave")),   # 新画 clip 默认波形
+        # R183 3.4b 多灯相位展开（0..360 度；缺省 0 = 旧行为逐位不变）
+        "spread_deg": clamp_deg(s.get("spread_deg")),
+        "phase_from_deg": clamp_deg(s.get("phase_from_deg")),
+        "phase_to_deg": clamp_deg(s.get("phase_to_deg")),
+        "clips": _normalize_clips(s.get("clips")),
+        "sources": _dict_rows(s.get("sources")),
+        "rules": _dict_rows(s.get("rules")),
+        "draw_graph": _copy_graph(s.get("draw_graph")),
+    })
+
+def _text(v) -> str:
+    """宽容字符串（None → ""）。"""
+    return str(v or "")
+
+def _targets(raw) -> List[str]:
+    """target_ch_types 归一化（非 str 项丢弃）。
+
+    ★ R182 四轮审计修：裸字符串（`"pump"`）此前被逐字符拆成
+      `[p,u,m,p]`（静默数据腐化）——非 list/tuple 一律给空。
+    """
+    if isinstance(raw, str):
+        return []
+    return [str(t) for t in (raw or []) if isinstance(t, str) and t]
+
+def _dict_rows(raw) -> List[dict]:
+    """dict 行表浅拷贝（sources/rules 用；非 dict 行丢弃）。
+
+    ★ R182 四轮审计修：非可迭代 raw（如 `rules: 7`）此前抛
+      TypeError——违背 normalize_state「永不抛」契约，现给空表。
+    """
+    if not isinstance(raw, (list, tuple)):
+        return []
+    return [dict(x) for x in raw if isinstance(x, dict)]
+
+def _deep_node(n: dict) -> dict:
+    """节点浅拷 + params/ch_types 深拷（清查⑦A P1-2：堵"未应用编辑经共享
+    params dict 直落工程 state"的泄漏——与 compile_graph 深拷同口径）。"""
+    d = dict(n)
+    if isinstance(d.get("params"), dict):
+        d["params"] = copy.deepcopy(d["params"])
+    if isinstance(d.get("ch_types"), (list, tuple)):
+        d["ch_types"] = list(d["ch_types"])
+    return d
+
+def _copy_graph(raw) -> dict:
+    """draw_graph 快照（清查⑤①F3：非 dict → 空图幂等）。"""
+    if not isinstance(raw, dict):
+        return {"nodes": [], "edges": []}
+    node = raw.get("nodes")
+    edge = raw.get("edges")
+    return {
+        "nodes": [_deep_node(n) for n in node if isinstance(n, dict)] if isinstance(node, list) else [],
+        "edges": [dict(e) for e in edge if isinstance(e, dict)] if isinstance(edge, list) else [],
+    }
+
+def _num(v, default: float) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+def _clamp01(v) -> float:
+    try:
+        return min(1.0, max(0.0, float(v)))
+    except (TypeError, ValueError):
+        return 0.0
+
+def _freq_or_default(v, default: float = 2.0) -> float:
+    """wave_freq = 区段内周期数（≥0 任意；非法/缺失给默认 2）。"""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return default
+    return f if f >= 0.0 else default
+
+def _normalize_clips(raw) -> List[Dict]:
+    """clip 归一化：start/end 数值化+排序+过窄丢弃；effect_id/wave/targets 随带。"""
+    clips: List[Dict] = []
+    if not isinstance(raw, list):
+        return clips
+    for c in raw:
+        clip = _normalize_clip(c)
+        if clip is not None:
+            clips.append(clip)
+    clips.sort(key=lambda c: (c["start"], c["end"]))
+    return clips
+
+def _normalize_clip(c) -> Optional[Dict]:
+    """单条 clip 归一化（非法/过窄/非有限值给 None=丢弃）。
+
+    ★ 清查⑦A P1-1/P3-18：NaN/Inf 此前存活 → 幽灵区段（不可拖不可删不出声、
+      签名永不稳、JSON 落盘非法）。照 `audio_mod_envelope._normalize_point`
+      的 `t != t` 先例补有限性防线；负 start 钳 0。
+    """
+    if not isinstance(c, dict):
+        return None
+    try:
+        start, end = float(c.get("start", 0.0)), float(c.get("end", 0.0))
+    except (TypeError, ValueError):
+        return None
+    if not (math.isfinite(start) and math.isfinite(end)):
+        return None
+    start = max(0.0, start)
+    if end - start < MIN_CLIP_S:
+        return None
+    targets = _targets(c.get("targets"))   # 清查⑦A P3-15：裸串逐字符拆同口径防
+    return {
+        "start": round(start, 4),
+        "end": round(end, 4),
+        "effect_id": str(c.get("effect_id", "") or ""),
+        "wave": str(c.get("wave", "") or ""),
+        "wave_freq": _freq_or_default(c.get("wave_freq")),
+        "targets": targets,
+        "points": normalize_points(c.get("points")),   # R180：无/非法 → []
+        # M1：per-clip 淡入/淡出（秒；哨兵 FADE_INHERIT = 继承全局）
+        "fade_in": _clip_fade(c.get("fade_in")),
+        "fade_out": _clip_fade(c.get("fade_out")),
+    }
+
+def _clip_fade(v) -> float:
+    """per-clip fade 归一化：缺失/负/非法 → FADE_INHERIT（继承全局斜坡）。"""
+    f = _num(v, FADE_INHERIT)
+    return FADE_INHERIT if f < 0.0 else round(f, 4)

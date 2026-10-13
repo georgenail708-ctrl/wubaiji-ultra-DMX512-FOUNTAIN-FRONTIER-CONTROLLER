@@ -16,6 +16,10 @@ def install(engine):
     from . import native_playback_index_install
     from . import native_anchor_public
     from . import native_clip_change_times
+    from . import native_filter_prepare
+    from . import native_audio_prepare
+    from . import native_fade_target, native_fade_target_install
+    from . import native_fade_owned_install
     owner = sys.modules[__package__]
     for name, module, statistics in (
         ("audio", native_audio_api, native_audio_api._COUNTERS),
@@ -25,10 +29,14 @@ def install(engine):
         ("source_geometry", native_source_motion_geometry, None),
         ("source_geometry_public", native_source_motion_geometry_install, None),
         ("filter", native_output_filter, None),
+        ("filter_prepare", native_filter_prepare, native_filter_prepare.COUNTERS),
+        ("audio_prepare", native_audio_prepare, native_audio_prepare.COUNTERS),
         ("source_public", native_source_install, None),
         ("render_timing", native_render_timing, native_render_timing.COUNTERS),
         ("playback_index", native_playback_index_install, None),
         ("anchor", native_anchor_public, native_anchor_public.COUNTERS),
+        ("fade_target", native_fade_target_install, native_fade_target.COUNTERS),
+        ("fade_owned", native_fade_owned_install, None),
         ("clip_change_times", native_clip_change_times, native_clip_change_times.COUNTERS),
         ("legacy_direction", native_legacy_direction_install, None),
         ("curve_lut", native_curve_lut, None),

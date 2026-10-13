@@ -9825,6 +9825,7 @@ class PlaybackEngine(QObject):
         proj=None,
         candidates: Optional[list[tuple[Clip, object, int, float, float, int]]] = None,
     ) -> tuple[np.ndarray, set[str]]:
+        from .native_anchor_preparation import prepare
         universe = int(universe)
         clip_start = float(getattr(clip, "start_time", 0.0) or 0.0)
         # ★勿改 clip 首帧：静态内容锚点==内容值会使淡入恒等于 raw（06-19 实报）。
@@ -9841,17 +9842,17 @@ class PlaybackEngine(QObject):
                 proj=proj,
                 ignore_fade_out=True,
             )
-            if prev_data is None or prev_active is None or not (prev_active).any():
+            if prev_data is None or prev_active is None or not mask_count(prev_active):
                 continue
             deps.add(str(getattr(candidate, "id", "") or id(candidate)))
             try:
                 source_duration = self._clip_source_duration(
                     candidate,
-                    max(0.0, float(getattr(candidate, "duration", 0.0) or 0.0)),
+                    prepare(0, float(getattr(candidate, "duration", 0.0) or 0.0)),
                 )
-                source_t = max(0.0, source_duration - 1e-4)
+                source_t = prepare(1, source_duration)
             except Exception:
-                source_t = max(0.0, float(_c_end) - float(c_start) - 1e-4)
+                source_t = prepare(2, float(_c_end), float(c_start))
             compiled = self._compiled_clip_universe(
                 candidate,
                 universe,
@@ -9870,7 +9871,7 @@ class PlaybackEngine(QObject):
             )
             # ★★ 2026-09-20 修复：改用与渲染同序的 start 降序仲裁（原为候选列表下标×1e9，
             #   旧 hold 会抢走紧邻动作的通道 → "9572 进入时部分电机迅速到 128"）。R109。
-            tie = float(c_start) * 1e6 + (float(track_order) + 1.0) * 1e-3
+            tie = prepare(3, float(c_start), float(track_order))
             update_anchor(anchor, best_scores, (prev_data, prev_active, scores), tie)
         return anchor, deps
 

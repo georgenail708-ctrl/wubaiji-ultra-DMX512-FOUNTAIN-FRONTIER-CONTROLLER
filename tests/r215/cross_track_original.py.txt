@@ -1,0 +1,56 @@
+def _build_cross_track_fade_in_anchor(
+        self,
+        clip: Clip,
+        universe: int,
+        track=None,
+        proj=None,
+        candidates: Optional[list[tuple[Clip, object, int, float, float, int]]] = None,
+    ) -> tuple[np.ndarray, set[str]]:
+        universe = int(universe)
+        clip_start = float(getattr(clip, "start_time", 0.0) or 0.0)
+        # ★勿改 clip 首帧：静态内容锚点==内容值会使淡入恒等于 raw（06-19 实报）。
+        anchor = self._get_fade_out_target(universe, proj=proj)
+        best_scores = np.full(512, -np.inf, dtype=np.float64)
+        deps: set[str] = set()
+        candidates = candidates if candidates is not None else self._find_previous_transition_clips(clip, universe, track=track, proj=proj)
+        for candidate, source_track, track_order, c_start, _c_end, _u in candidates:
+            prev_data, prev_active = self._sample_transition_clip_output(
+                candidate,
+                universe,
+                clip_start,
+                track=source_track,
+                proj=proj,
+                ignore_fade_out=True,
+            )
+            if prev_data is None or prev_active is None or not (prev_active).any():
+                continue
+            deps.add(str(getattr(candidate, "id", "") or id(candidate)))
+            try:
+                source_duration = self._clip_source_duration(
+                    candidate,
+                    max(0.0, float(getattr(candidate, "duration", 0.0) or 0.0)),
+                )
+                source_t = max(0.0, source_duration - 1e-4)
+            except Exception:
+                source_t = max(0.0, float(_c_end) - float(c_start) - 1e-4)
+            compiled = self._compiled_clip_universe(
+                candidate,
+                universe,
+                track=source_track,
+                proj=proj,
+            )
+            scores = self._compiled_clip_channel_change_scores(
+                candidate,
+                universe,
+                source_t,
+                clip_start,
+                c_start,
+                np.asarray(prev_active, dtype=bool),
+                compiled,
+                hold_extension=self._clip_hold_mode(candidate) != "none",
+            )
+            # ★★ 2026-09-20 修复：改用与渲染同序的 start 降序仲裁（原为候选列表下标×1e9，
+            #   旧 hold 会抢走紧邻动作的通道 → "9572 进入时部分电机迅速到 128"）。R109。
+            tie = float(c_start) * 1e6 + (float(track_order) + 1.0) * 1e-3
+            update_anchor(anchor, best_scores, (prev_data, prev_active, scores), tie)
+        return anchor, deps

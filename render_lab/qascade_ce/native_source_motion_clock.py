@@ -7,9 +7,10 @@ from .native_binding import bind_native, borrowed_pointer
 
 I, D = ct.POINTER(ct.c_int), ct.POINTER(ct.c_double)
 _INT_INPUT, _DOUBLE_INPUT = ct.c_int * 16, ct.c_double * 24
-_SCALAR_OPS = frozenset((0, 5, 6, 7, 9, 12, 14, 15, 16, 20, 25, 26, 27, 28, 29, 30))
+_SCALAR_OPS = frozenset((0, 5, 6, 7, 9, 12, 14, 15, 16, 20, 25, 26, 27, 28, 29, 30, 31))
 
 _FUNCTION = None
+_INSTALLED_FUNCTION = None
 _SOURCE_CLOCK_CALL_CNT = [0]
 _SOURCE_CLOCK_SUCCESS_CNT = [0]
 _SOURCE_CLOCK_ERROR_CNT = [0]
@@ -21,12 +22,14 @@ _SOURCE_CLOCK_TABLE_SCALAR_CNT = [0]
 _SOURCE_CLOCK_REWIND_CNT = [0]
 _SOURCE_CLOCK_CONSUMPTION_BOOST_CNT = [0]
 _SOURCE_CLOCK_CACHE_INDEX_CNT = [0]
+_SOURCE_CLOCK_CROSS_TRACK_CNT = [0]
 MODES = {name: i for i, name in enumerate(("normal", "reverse", "pingpong", "loop", "once"))}
 
 
 def install(engine):
-    global _FUNCTION
+    global _FUNCTION, _INSTALLED_FUNCTION
     _FUNCTION = bind_native(engine.dll, "ce_source_motion_clock", [ct.c_int, I, D, D, D, D], ct.c_int)
+    _INSTALLED_FUNCTION = _FUNCTION
     return _FUNCTION is not None
 
 
@@ -72,6 +75,8 @@ def invoke_scalar(op, ints, values):
         _SOURCE_CLOCK_ERROR_CNT[0] += 1
         raise RuntimeError(f"native source clock failed: {status}")
     _SOURCE_CLOCK_SUCCESS_CNT[0] += 1
+    if op == 31:
+        _SOURCE_CLOCK_CROSS_TRACK_CNT[0] += 1
     return result
 
 

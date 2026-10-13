@@ -7885,6 +7885,10 @@ def _hook_lt(engine):
     _UNI = 512
 
     orig = _pe.PlaybackEngine._apply_clip_light_tracking
+    from qascade_ce import native_lt_prepare as _lt_prepare
+    _lt_prepare_fn = _lt_prepare.public_prepare
+    _lt_prepare_meta = (_lt_prepare_fn.__code__, _lt_prepare_fn.__defaults__, _lt_prepare_fn.__kwdefaults__)
+    _lt_owner = None
 
     def _lt_live_fn(self):
         nm0 = self._nm
@@ -7913,41 +7917,29 @@ def _hook_lt(engine):
         return nm_fn
 
     def ce_apply_clip_lt(self, clip, raw, universe, local_t, project):
+        if _lt_owner is None or project is None or type(self) is not _pe.PlaybackEngine:
+            return orig(self, clip, raw, universe, local_t, project)
+        if _lt_prepare.public_prepare is not _lt_prepare_fn or any(a is not b for a, b in zip(
+                (_lt_prepare_fn.__code__, _lt_prepare_fn.__defaults__, _lt_prepare_fn.__kwdefaults__), _lt_prepare_meta)):
+            _lt_prepare.COUNTERS['foreign_fallback'] += 1
+            return orig(self, clip, raw, universe, local_t, project)
         try:
-            if not bool(getattr(clip, "light_tracking_enabled", False)) \
-                    or project is None:
-                return raw
-            # 参数归一化（:4158-4178 同式; LtParams 不解析颜色字符串,
-            # 颜色/白色判定/hex 解析在此复刻后传入）
-            source = str(getattr(clip, "light_tracking_source", "pump") or "pump").strip().lower()
-            if source not in ("pump", "valve"):
-                source = "pump"
-            threshold = max(0, min(255, int(getattr(
-                clip, "light_tracking_threshold", 128) or 128)))
-            attack = max(0.01, float(getattr(
-                clip, "light_tracking_attack",
-                DEFAULT_LIGHT_TRACKING_ATTACK) or DEFAULT_LIGHT_TRACKING_ATTACK))
-            release = max(0.01, float(getattr(
-                clip, "light_tracking_release",
-                DEFAULT_LIGHT_TRACKING_RELEASE) or DEFAULT_LIGHT_TRACKING_RELEASE))
-            _ltmb = getattr(clip, "light_tracking_max_brightness", None)
-            if _ltmb in (None, ""):
-                _ltmb = 255
-            # 0 是合法输入(对话框 0-255), `or 255` 会把 0 反转成全亮(EDGE-03)。
-            max_brightness = max(0, min(255, int(_ltmb)))
-            color = str(getattr(clip, "light_tracking_color", "#FFFFFF") or "#FFFFFF").strip().upper()
-            _color_is_white = (color.lstrip("#") in ("FFFFFF", "ffffff", "")
-                               or len(color.lstrip("#")) != 6)
-            if color.startswith("#"):
-                color = color[1:]
-            if len(color) != 6:
-                color = "FFFFFF"
-            try:
-                cr = int(color[0:2], 16)
-                cg = int(color[2:4], 16)
-                cb = int(color[4:6], 16)
-            except Exception:
-                cr, cg, cb = 255, 255, 255
+            params, semantic = _lt_prepare_fn(_lt_owner, clip)
+        except Exception as _e:
+            _LT_APPLY_FALLBACK_CNT[0] += 1
+            _CE_EXC_CNT[0] += 1
+            log.warning("[CE-LT] C 路径异常回退原版: %s", _e)
+            return orig(self, clip, raw, universe, local_t, project)
+        if semantic is not None:
+            _warn_key = "%s: %s" % (type(semantic).__name__, semantic)
+            if _warn_key not in self._lt_warned:
+                self._lt_warned.add(_warn_key)
+                _pe.log.warning("clip light tracking failed: %s", semantic)
+            return raw
+        if params is None:
+            return orig(self, clip, raw, universe, local_t, project)
+        try:
+            source = params.source
             # 结构 memo（与 :4183-4212 同式; memo[3] = id→fixture 查找表,
             # 供 build_lt_scope 的 fx_by_id O(1) 路径）
             from src.engine.light_tracking_structure import structure_memo
@@ -7979,9 +7971,6 @@ def _hook_lt(engine):
             if scope_cache is None:
                 scope_cache = {}
                 self._lt_c_scope_cache = scope_cache
-            params = _ltp.LtParams(source, threshold, attack, release,
-                                   _color_is_white, cr, cg, cb,
-                                   max_brightness)
             _skey = (clip_key, int(universe), struct_sig, source,
                      params.threshold, params.attack, params.release,
                      params.color_is_white, params.cr, params.cg, params.cb,
@@ -8067,6 +8056,7 @@ def _hook_lt(engine):
             log.warning("[CE-LT] C 路径异常回退原版: %s", _e)
             return orig(self, clip, raw, universe, local_t, project)
 
+    _lt_owner = _lt_prepare.install(engine, orig, ce_apply_clip_lt, _ltp.LtParams)
     _pe.PlaybackEngine._apply_clip_light_tracking = ce_apply_clip_lt
     log.info("[CE] LT 已接入: _apply_clip_light_tracking → ce_lt_apply")
 

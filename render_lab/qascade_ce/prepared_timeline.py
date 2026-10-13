@@ -27,7 +27,9 @@ def counters():
                  "native_source_motion_geometry", "native_source_motion_geometry_install",
                  "native_source_motion_prelude", "native_render_timing",
                  "native_legacy_direction_install", "native_legacy_parallel", "native_curve_lut",
-                 "native_trajectory", "native_curve_scalar", "native_programmer_trajectory"):
+                 "native_trajectory", "native_curve_scalar", "native_programmer_trajectory",
+                 "native_anchor_public", "native_clip_change_times", "native_filter_prepare", "native_fade_target",
+                 "native_audio_prepare", "native_lt_prepare"):
         module = sys.modules.get(__package__ + "." + name)
         accessor = getattr(module, "counters", None)
         if accessor is not None:

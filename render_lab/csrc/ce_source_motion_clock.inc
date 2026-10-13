@@ -364,7 +364,22 @@ static void _ce_clock_cache_index(const double* values,double* out)
 CE_API int ce_source_motion_clock(int op,const int* ints,const double* values,
     const double* pauses,double* out,double* pause_out)
 {
-    if (op<0 || op>30 || !ints || !values || !out) return -1;
+    if (op<0 || op>31 || !ints || !values || !out) return -1;
+    if(op==31) {
+        if(ints[0]<0 || ints[0]>3) return -1;
+        for(int slot=0;slot<24;++slot) out[slot]=0.0;
+        if(ints[0]==3) {
+            double start=values[0]*1e6;
+            double order=(values[1]+1.0)*1e-3;
+            out[0]=start+order;
+        } else {
+            double value=values[0];
+            if(ints[0]==2) value=value-values[1];
+            if(ints[0]) value=value-1e-4;
+            out[0]=value>0.0 ? value : 0.0;
+        }
+        return 0;
+    }
     if(op==30) {_ce_clock_cache_index(values,out);return 0;}
     if(op>=26) {_ce_clock_retained(op,ints,values,out);return 0;}
     if(op==25) {_ce_clock_scalar_fade(ints,values,out);return 0;}

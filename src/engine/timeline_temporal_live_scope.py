@@ -61,6 +61,10 @@ def _extra_original(owner):
             return False
         if name == "_render_position" and not _render_wrapper_original(function):
             return False
+        if name == "_get_fade_out_target" and hasattr(function, "__wrapped__"):
+            from qascade_ce.native_fade_target_install import wrapper_current
+            if not wrapper_current(function, owner):
+                return False
         function = getattr(function, "__wrapped__", function)
         if type(function) is not FunctionType or function.__globals__ is not vars(sys.modules[owner.__module__]):
             return False
@@ -113,4 +117,9 @@ def default_live_scope(engine):
         return False
     if not _class_current(type(engine), class_rows) or tuple(installed._ORIGINALS) != original_keys:
         return False
+    function = inspect.getattr_static(type(engine), "_get_fade_out_target")
+    if hasattr(function, "__wrapped__"):
+        from qascade_ce.native_fade_target_install import wrapper_current
+        if not wrapper_current(function, type(engine), instance=engine):
+            return False
     return _metadata_current(metadata) and default_scope(engine)

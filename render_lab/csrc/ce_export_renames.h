@@ -286,4 +286,27 @@
 
 #define ce_cold_clip_change_times_v1 ce_367eed91a2
 
+#define ce_filter_prepare_abi ce_15957624d7
+#define ce_filter_prepare_params_v1 ce_791663bc6b
+#define ce_filter_prepare_size ce_097a89c762
+#define ce_filter_prepare_spans_v1 ce_8eae4ebf5f
+
+#define ce_fade_target_frame ce_0648998426
+#define ce_fade_target_signature ce_3df56c891f
+
+#define ce_audio_prepare_abi ce_74c3b7688b
+#define ce_audio_prepare_points_v1 ce_40e5b137b6
+#define ce_audio_prepare_processors_v1 ce_2ebd661ed0
+#define ce_audio_prepare_request_size ce_73b4b515b2
+#define ce_audio_prepare_round_v1 ce_26b9b8b6d3
+#define ce_audio_prepare_size ce_1f581bbf51
+#define ce_audio_prepare_state_v1 ce_6c154ab917
+#define ce_audio_prepare_step_size ce_52bafaddfe
+
+#define ce_lt_prepare_abi ce_9ca715702f
+#define ce_lt_prepare_report_size ce_2be6df5e8a
+#define ce_lt_prepare_request_size ce_963ae92535
+#define ce_lt_prepare_v1 ce_beb0511510
+#define ce_lt_prepare_value_size ce_3ee8e03f72
+
 #endif /* CE_EXPORT_RENAMES_H */

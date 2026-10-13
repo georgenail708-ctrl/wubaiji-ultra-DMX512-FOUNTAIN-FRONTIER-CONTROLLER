@@ -9,14 +9,23 @@ New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
 $vswherePath = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
 $installation = & $vswherePath -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if ($LASTEXITCODE -ne 0 -or -not $installation) { throw 'Actual installed MSVC was not located' }
-$vsDevCmdPath = Join-Path $installation 'Common7/Tools/VsDevCmd.bat'
-if (-not (Test-Path -LiteralPath $vsDevCmdPath)) { throw 'Actual VS environment script is missing' }
-$environmentRows = & cmd.exe /d /s /c "`"`"$vsDevCmdPath`" -arch=x64 -host_arch=x64 >nul && set`""
-if ($LASTEXITCODE -ne 0) { throw 'Actual VS environment initialization failed' }
-foreach ($line in $environmentRows) {
-    $splitAt = $line.IndexOf('=')
-    if ($splitAt -gt 0) { [Environment]::SetEnvironmentVariable($line.Substring(0,$splitAt),$line.Substring($splitAt+1),'Process') }
+# Reuse the product CE builder's _find_msvc/_find_sdk/_build_env protocol.
+# Resolve actual compiler/header/library paths; no nested shell quoting.
+$msvcRoot = Join-Path $installation 'VC/Tools/MSVC'
+$msvc = Get-ChildItem -LiteralPath $msvcRoot -Directory | Sort-Object { [version]$_.Name } | Select-Object -Last 1
+$kitsRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10'
+$sdk = Get-ChildItem -LiteralPath (Join-Path $kitsRoot 'Include') -Directory | Sort-Object { [version]$_.Name } | Select-Object -Last 1
+if ($null -eq $msvc -or $null -eq $sdk) { throw 'Actual MSVC/Windows SDK directories are unavailable' }
+$compilerPath = Join-Path $msvc.FullName 'bin/Hostx64/x64/cl.exe'
+if (-not (Test-Path -LiteralPath $compilerPath)) { throw 'Actual x64 compiler is missing' }
+$includePaths = @((Join-Path $msvc.FullName 'include'),(Join-Path $sdk.FullName 'ucrt'),(Join-Path $sdk.FullName 'shared'),(Join-Path $sdk.FullName 'um'))
+$libraryPaths = @((Join-Path $msvc.FullName 'lib/x64'),(Join-Path $kitsRoot "Lib/$($sdk.Name)/ucrt/x64"),(Join-Path $kitsRoot "Lib/$($sdk.Name)/um/x64"))
+foreach ($requiredPath in $includePaths + $libraryPaths) {
+    if (-not (Test-Path -LiteralPath $requiredPath)) { throw "Actual compiler dependency path missing: $requiredPath" }
 }
+$env:INCLUDE = $includePaths -join ';'
+$env:LIB = $libraryPaths -join ';'
+$env:PATH = (Split-Path -Parent $compilerPath) + ';' + $env:PATH
 if (-not [System.Runtime.Intrinsics.X86.Avx2]::IsSupported) { throw 'Actual hosted CPU/OS lacks AVX2; both-ISA acceptance unavailable' }
 $nativeRoot = Join-Path $repoRoot 'tests/native'
 foreach ($isa in @('sse2','avx2')) {
@@ -27,7 +36,7 @@ foreach ($isa in @('sse2','avx2')) {
         $sourcePath = Join-Path $nativeRoot "p10-g0-main$version/controls.c"
         $exePath = Join-Path $isaOutput "controls$version.exe"
         $objectPath = Join-Path $isaOutput "controls$version.obj"
-        & cl.exe /nologo /TC /std:c11 /O2 /fp:precise /GL- /MD $archOption $sourcePath "/Fo:$objectPath" "/Fe:$exePath" /link /INCREMENTAL:NO
+        & $compilerPath /nologo /utf-8 /TC /std:c11 /O2 /fp:precise /GL- /MD $archOption $sourcePath "/Fo:$objectPath" "/Fe:$exePath" /link /INCREMENTAL:NO
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         & $exePath
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -36,7 +45,7 @@ foreach ($isa in @('sse2','avx2')) {
     $librarySource = Join-Path $nativeRoot 'p10-g0-main07/main_grid_step.c'
     $libraryPath = Join-Path $isaOutput 'g0_step.dll'
     $libraryObject = Join-Path $isaOutput 'g0_step.obj'
-    & cl.exe /nologo /TC /std:c11 /O2 /fp:precise /GL- /MD /LD $archOption $librarySource "/Fo:$libraryObject" "/Fe:$libraryPath" /link /INCREMENTAL:NO
+    & $compilerPath /nologo /utf-8 /TC /std:c11 /O2 /fp:precise /GL- /MD /LD $archOption $librarySource "/Fo:$libraryObject" "/Fe:$libraryPath" /link /INCREMENTAL:NO
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     & python (Join-Path $nativeRoot 'verify_g0_native.py') --dll $libraryPath --types (Join-Path $nativeRoot 'p10-g0-main07/grid_step_types.py') --out (Join-Path $isaOutput 'abi.json')
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -286,4 +286,12 @@
 
 #define ce_cold_clip_change_times_v1 ce_367eed91a2
 
+#define ce_filter_prepare_abi ce_15957624d7
+#define ce_filter_prepare_params_v1 ce_791663bc6b
+#define ce_filter_prepare_size ce_097a89c762
+#define ce_filter_prepare_spans_v1 ce_8eae4ebf5f
+
+#define ce_fade_target_frame ce_0648998426
+#define ce_fade_target_signature ce_3df56c891f
+
 #endif /* CE_EXPORT_RENAMES_H */

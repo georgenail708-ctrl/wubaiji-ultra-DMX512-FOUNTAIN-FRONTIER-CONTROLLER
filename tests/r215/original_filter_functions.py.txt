@@ -1,0 +1,108 @@
+def _to_float(v, default: float) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+def _to_int(v, default: int) -> int:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+def _clamp01(v, default: float = 1.0) -> float:
+    return max(0.0, min(1.0, _to_float(v, default)))
+
+def _span_of(rng) -> float:
+    """角度范围 (min,max) → 幅面（度）；非法/退化 → 0.0。"""
+    try:
+        span = abs(float(rng[1]) - float(rng[0]))
+    except (TypeError, ValueError, IndexError):
+        return 0.0
+    return span if span > 1.0 else 0.0
+
+def _seq(v) -> list:
+    """`None → []` 归一（避免 `or []` 的 BoolOp 计费）。"""
+    return v if isinstance(v, (list, tuple)) else []
+
+def _proj_patch_rev(proj) -> int:
+    """该工程的配接版本号（无该字段的旧对象 → 0，行为与加版本号之前一致）。
+
+    ★ R141：**原地改配接**（`start_channel`/`universe`/`def_id`，或
+      `FixtureDefinition.channels`）时 `id(proj)/len(fixtures)/len(fixture_defs)`
+      与列表身份**全都不变** → 掩码缓存陈旧命中 → 泵主控/电机限位限速按**旧地址**
+      打（实测确认：设备从地址 1 挪到 100，掩码仍命中地址 2）。
+      版本号由 `Project.bump_patch_rev()` 递增，配接面板改动后调用。
+    """
+    return int(getattr(proj, "patch_rev", 0) or 0)
+
+def _mask_cache(engine, kind: str, universe: int, proj):
+    """取/建该 (kind, universe) 的缓存项；返回 `(cache, key, hit_or_None)`。
+
+    缓存字典按需建在宿主对象上（PlaybackEngine 已有；NetworkManager 无 → 惰性
+    创建，避免每帧重建掩码）。
+    """
+    fixtures = _seq(getattr(proj, "fixtures", None))
+    fdefs = _seq(getattr(proj, "fixture_defs", None))
+    key = (kind, int(universe), id(proj), len(fixtures), len(fdefs),
+           _proj_patch_rev(proj))
+    cache = getattr(engine, _GEOM_ATTR, None)
+    if cache is None:
+        cache = {}
+        try:
+            setattr(engine, _GEOM_ATTR, cache)
+        except Exception:
+            return None, key, None
+    hit = cache.get(key)
+    if hit is not None and hit[0] is proj and hit[1] is fixtures and hit[2] is fdefs:
+        return cache, key, hit[3]
+    return cache, key, None
+
+def _mask_store(engine, cache, key, proj, value) -> None:
+    if cache is None:
+        return
+    fixtures = _seq(getattr(proj, "fixtures", None))
+    fdefs = _seq(getattr(proj, "fixture_defs", None))
+    cache[key] = (proj, fixtures, fdefs, value)
+
+def universe_deg_spans(engine, universe: int, proj) -> dict:
+    """该 universe 的 `{粗通道名: 幅面角度}`（跨设备取中位；缺失 → 满幅回退）。"""
+    cache, key, hit = _mask_cache(engine, "__output_filter_span__", universe, proj)
+    if hit is not None:
+        return hit
+    buckets: dict = {}
+    by_id = {str(getattr(fd, "id", "")): fd
+             for fd in _seq(getattr(proj, "fixture_defs", None))}
+    for fi in _seq(getattr(proj, "fixtures", None)):
+        if _to_int(getattr(fi, "universe", 1), 1) != int(universe):
+            continue
+        fd = by_id.get(str(getattr(fi, "def_id", "")))
+        for ct in MOTOR_COARSE_CHANNELS:
+            span = _span_of((getattr(fd, "motor_ranges", None) if fd is not None else None
+                             or {}).get(ct))
+            if span > 0.0:
+                buckets.setdefault(ct, []).append(span)
+    out = {ct: (float(np.median(v)) if v else _FALLBACK_DEG_SPAN)
+           for ct, v in buckets.items()}
+    for ct in MOTOR_COARSE_CHANNELS:
+        out.setdefault(ct, _FALLBACK_DEG_SPAN)
+    _mask_store(engine, cache, key, proj, out)
+    return out
+
+def clip_filter_params(clip) -> tuple:
+    """`(限位系数, 限速度/秒, 泵系数)`，带钳位与容错。"""
+    return (
+        _clamp01(getattr(clip, "motor_limit_scale", 1.0)),
+        max(0.0, _to_float(getattr(clip, "motor_speed_limit_dps", 0.0), 0.0)),
+        _clamp01(getattr(clip, "pump_master_scale", 1.0)),
+    )
+
+def filters_active(clip) -> bool:
+    """是否任一滤网生效（默认值 = 全不生效）。"""
+    scale_m, dps, scale_p = clip_filter_params(clip)
+    return scale_m < 1.0 - _EPS or dps > _EPS or scale_p < 1.0 - _EPS
+
+def output_filters_signature(clip) -> tuple:
+    """滤网参数签名（渲染 memo / 烘焙缓存失效判定用）。"""
+    scale_m, dps, scale_p = clip_filter_params(clip)
+    return (round(scale_m, 4), round(dps, 4), round(scale_p, 4))

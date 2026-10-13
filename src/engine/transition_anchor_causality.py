@@ -41,7 +41,8 @@ def _initial_functions(owner):
     from types import FunctionType
     namespace = vars(sys.modules[owner.__module__])
     functions = dict((name, vars(owner).get(name)) for name in _DEFAULTS)
-    functions.update((name, vars(filters).get(name)) for name in _FILTER_DEFAULTS)
+    from .filter_preparation_scope import original_filter_function
+    functions.update((name, original_filter_function(name, vars(filters).get(name))) for name in _FILTER_DEFAULTS)
     functions.update((name, vars(anchor_cache).get(name)) for name in _ANCHOR_DEFAULTS)
     for name, function in functions.items():
         if type(function) is not FunctionType:
@@ -53,11 +54,18 @@ def _initial_functions(owner):
         if function.__kwdefaults__ is not None:
             return None
         digest = hashlib.sha256(repr(_signature(function.__code__)).encode()).hexdigest()
-        if digest != EXPECTED.get(name):
+        if not _source_original(name, function, digest):
             return None
     if not _anchor_dispatch_current(owner, functions["evict_fade_anchor_cache"]):
         return None
     return dict((name, _metadata(function)) for name, function in functions.items())
+
+
+def _source_original(name, function, digest):
+    if digest == EXPECTED.get(name):
+        return True
+    from .native_anchor_preparation import qualified_source
+    return qualified_source(name, function)
 
 
 def _default_value_current(value, wanted):
@@ -108,9 +116,13 @@ def _functions_current(owner, qualified):
     namespace = vars(owner)
     for name, previous in qualified.items():
         function = _function_namespace(name, namespace).get(name)
+        if name in _FILTER_DEFAULTS:
+            from .filter_preparation_scope import original_filter_function
+            function = original_filter_function(name, function)
         if not _metadata_current(function, previous):
             return False
-    return (type(filters._EPS) is float and filters._EPS == 1e-6
+    from .native_anchor_preparation import current
+    return (current() and type(filters._EPS) is float and filters._EPS == 1e-6
             and _anchor_dispatch_current(owner, qualified["evict_fade_anchor_cache"][0]))
 
 

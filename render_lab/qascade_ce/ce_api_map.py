@@ -269,4 +269,10 @@ CE_API_MAP = {
     "ce_programmer_library_sort_request_size": "ce_eec1c74bc7",
     "ce_programmer_row_eval": "ce_df280e3406",
     "ce_cold_clip_change_times_v1": "ce_367eed91a2",
+    "ce_filter_prepare_abi": "ce_15957624d7",
+    "ce_filter_prepare_params_v1": "ce_791663bc6b",
+    "ce_filter_prepare_size": "ce_097a89c762",
+    "ce_filter_prepare_spans_v1": "ce_8eae4ebf5f",
+    "ce_fade_target_frame": "ce_0648998426",
+    "ce_fade_target_signature": "ce_3df56c891f",
 }

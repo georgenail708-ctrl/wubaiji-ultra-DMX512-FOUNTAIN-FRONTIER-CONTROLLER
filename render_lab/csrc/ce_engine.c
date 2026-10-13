@@ -15931,3 +15931,5 @@ static int ce_render_clip_frame_lt(
 #include "ce_programmer_library_sort_api.inc"
 
 #include "ce_cold_clip_change_times.inc"
+#include "ce_filter_prepare.inc"
+#include "ce_fade_target.inc"

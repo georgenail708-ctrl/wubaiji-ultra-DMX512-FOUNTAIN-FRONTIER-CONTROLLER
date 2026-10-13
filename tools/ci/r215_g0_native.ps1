@@ -12,9 +12,9 @@ if ($LASTEXITCODE -ne 0 -or -not $installation) { throw 'Actual installed MSVC w
 # Reuse the product CE builder's _find_msvc/_find_sdk/_build_env protocol.
 # Resolve actual compiler/header/library paths; no nested shell quoting.
 $msvcRoot = Join-Path $installation 'VC/Tools/MSVC'
-$msvc = Get-ChildItem -LiteralPath $msvcRoot -Directory | Sort-Object { [version]$_.Name } | Select-Object -Last 1
+$msvc = Get-ChildItem -LiteralPath $msvcRoot -Directory | Where-Object Name -Match '^\d+(\.\d+){1,3}$' | Sort-Object { [version]$_.Name } | Select-Object -Last 1
 $kitsRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10'
-$sdk = Get-ChildItem -LiteralPath (Join-Path $kitsRoot 'Include') -Directory | Sort-Object { [version]$_.Name } | Select-Object -Last 1
+$sdk = Get-ChildItem -LiteralPath (Join-Path $kitsRoot 'Include') -Directory | Where-Object Name -Match '^\d+(\.\d+){1,3}$' | Sort-Object { [version]$_.Name } | Select-Object -Last 1
 if ($null -eq $msvc -or $null -eq $sdk) { throw 'Actual MSVC/Windows SDK directories are unavailable' }
 $compilerPath = Join-Path $msvc.FullName 'bin/Hostx64/x64/cl.exe'
 if (-not (Test-Path -LiteralPath $compilerPath)) { throw 'Actual x64 compiler is missing' }

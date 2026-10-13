@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+_T_DIGITS = 4
+
+_V_DIGITS = 4
+
+_C_DIGITS = 3
+
+def _f(v, default: float = 0.0) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+def _clamp(v: float, lo: float, hi: float) -> float:
+    return lo if v < lo else (hi if v > hi else v)
+
+def _clamp01(v) -> float:
+    return _clamp(_f(v, 0.0), 0.0, 1.0)
+
+def normalize_points(raw) -> List[list]:
+    """原始 points → 规范表 [[t,v] / [t,v,c]]（非法行丢弃；空/非法 → []）。
+
+    规则：t,v,c 数值化+钳位；按 t 升序稳定排序；同一 t 保留首+末
+    （中间点对求值无贡献，丢弃）；量化 4/4/3 位小数；c=0 记 2 元素。
+    单点合法（= 全段恒值）；0 点 = 无包络（调用方走旧斜坡）。
+    """
+    if not isinstance(raw, (list, tuple)):
+        return []
+    rows: List[list] = []
+    for p in raw:
+        row = _normalize_point(p)
+        if row is not None:
+            rows.append(row)
+    rows.sort(key=lambda r: r[0])
+    return _dedup_t(rows)
+
+def _normalize_point(p) -> Optional[list]:
+    """单点归一化：[t,v] / [t,v,c] / {t,v,c} 三种来源；非法 → None。"""
+    if isinstance(p, dict):
+        t, v, c = p.get("t"), p.get("v"), p.get("c")
+    elif isinstance(p, (list, tuple)) and len(p) >= 2:
+        t, v = p[0], p[1]
+        c = p[2] if len(p) >= 3 else 0.0
+    else:
+        return None
+    t, v, c = _clamp01(t), _clamp01(v), _clamp(_f(c, 0.0), -1.0, 1.0)
+    if t != t or v != v or c != c:      # NaN 防线（float('nan') 会污染排序）
+        return None
+    out = [round(t, _T_DIGITS), round(v, _V_DIGITS)]
+    if abs(c) > 1e-9:
+        out.append(round(c, _C_DIGITS))
+    return out
+
+def _dedup_t(rows: List[list]) -> List[list]:
+    """同 t（量化后相等）保留首+末（=阶跃对的左/右值），其余丢。"""
+    out: List[list] = []
+    i, n = 0, len(rows)
+    while i < n:
+        j = i + 1
+        while j < n and rows[j][0] == rows[i][0]:
+            j += 1
+        out.append(rows[i])
+        if j - 1 > i:
+            out.append(rows[j - 1])
+        i = j
+    return out

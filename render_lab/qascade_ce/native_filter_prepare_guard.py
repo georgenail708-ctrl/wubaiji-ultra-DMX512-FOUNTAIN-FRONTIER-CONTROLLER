@@ -11,7 +11,9 @@ from numpy._core import _methods as numpy_methods
 from numpy._core._multiarray_umath import _ArrayFunctionDispatcher
 
 from .native_curve_scalar_guard import _signature
-from .native_filter_prepare_signatures import EXPECTED, NEW_EXPECTED, NEW_FUNCTION_NAMES
+from .native_filter_prepare_signatures import EXPECTED
+from .native_filter_prepare_successor_signatures import (
+    ADMITTED_EXPECTED as NEW_EXPECTED, ADMITTED_FUNCTION_NAMES as NEW_FUNCTION_NAMES)
 from . import native_filter_prepare_metadata as metadata
 from . import native_filter_prepare_scope as scope
 
@@ -48,6 +50,28 @@ def _keyword_current(current, captured):
         return current is None
     return (type(current) is tuple and len(current) == len(captured)
             and all(left is right and value is original for (left, value), (right, original) in zip(current, captured)))
+
+
+def function_current_successor(function, captured):
+    if captured is None or type(function) is not FunctionType:
+        return False
+    if function.__kwdefaults__ is not None:
+        return function_current(function, captured)
+    return _plain_metadata_current(function, captured)
+
+
+def _plain_metadata_current(function, captured):
+    return (function is captured[0] and function.__code__ is captured[1]
+            and function.__defaults__ is captured[2] and captured[3] is None
+            and captured[4] is None)
+
+
+def _new_current_successor(guard):
+    if guard.new_functions is None:
+        return False
+    return all((all(function_current_successor(vars(module).get(name), value)
+                    for module, name, value in guard.new_functions),
+                all(vars(module).get(name, metadata.MISSING) is value for module, name, value in guard.new_globals)))
 
 
 def _new_functions(modules):
@@ -201,6 +225,11 @@ class Guard:
         return True
 
     def current(self):
+        return all((self.safe, self._aliases_current(), self._originals_current(),
+                    self._wrappers_current(), self._models_current(), _new_current_successor(self),
+                    self.binding_scope.current(self.owner)))
+
+    def current_original(self):
         return all((self.safe, self._aliases_current(), self._originals_current(),
                     self._wrappers_current(), self._models_current(), self._new_current(),
                     self.binding_scope.current(self.owner)))

@@ -6,7 +6,9 @@ import struct
 import sys
 from types import CodeType, FunctionType
 
-from .native_filter_prepare_signatures import SUPPLIER_EXPECTED, NEW_EXPECTED, NEW_FUNCTION_NAMES
+from .native_filter_prepare_signatures import SUPPLIER_EXPECTED
+from .native_filter_prepare_successor_signatures import (
+    ADMITTED_EXPECTED as NEW_EXPECTED, ADMITTED_FUNCTION_NAMES as NEW_FUNCTION_NAMES)
 
 MODULES = ('native_filter_prepare', 'native_filter_prepare_types', 'native_filter_prepare_metadata',
            'native_filter_prepare_guard', 'native_filter_prepare_owner', 'native_filter_prepare_scope')

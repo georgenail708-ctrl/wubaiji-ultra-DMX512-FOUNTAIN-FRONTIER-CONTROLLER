@@ -1,0 +1,13 @@
+from __future__ import annotations
+
+FULL_TURN_DEG = 360.0
+
+def _f(v, default: float = 0.0) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+def clamp_deg(v) -> float:
+    """相位参数归一化：0..360 度（缺失/非法 → 0.0）。"""
+    return min(FULL_TURN_DEG, max(0.0, _f(v, 0.0)))

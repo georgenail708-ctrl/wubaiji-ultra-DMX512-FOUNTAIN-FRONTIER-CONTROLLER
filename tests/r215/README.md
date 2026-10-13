@@ -34,3 +34,25 @@ The expected parameterized node counts are C05 **114** (72 dual-CPU ABI, 32 sour
 The three reference files contain original public functions from the repository's MIT source. Public source AST provenance is recorded in the accompanying publication review; the byte hashes inside the tests remain the original independent pins. C03 freshness tests deliberately create a fresh original oracle for each public NetworkManager update so an original weak cache cannot hide changed output.
 
 The metadata edge/foreign cases never invoke modified native pointers. The normal cases require successful actual C work, full output bits/shape/ownership where specified, source/currentness qualification, unchanged warnings/exceptions and precise cache ownership. A collection error, unavailable dependency/build, native crash or nonzero process exit is not successful acceptance.
+
+
+## Preparation and owned range successors
+
+The additional controls retain their original test bodies and assertions. Only sibling paths and synthetic fixture suppliers are adapted for this public suite. The supported reviewed preparation environment is CPython **3.13.13** with NumPy **2.4.4**; other supplier versions are deliberately outside these exact-source preparation qualifiers.
+
+Run the new focused batches in fresh processes:
+
+```powershell
+python -m pytest -q tests/r215/test_audio_preparation_draft.py tests/r215/test_audio_prepare_qualification_draft.py tests/r215/test_review_default_installation_draft.py
+python -m pytest -q tests/r215/test_audio_prepare_raw_numeric_draft.py
+python -m pytest -q tests/r215/test_lt_original_business_draft.py tests/r215/test_lt_prepare_ce_draft.py tests/r215/test_lt_prepare_tamper_successor_draft.py
+python -m pytest -q tests/r215/test_lt_prepare_raw_draft.py
+python -m pytest -q tests/r215/test_filter_preparation_draft.py tests/r215/test_filter_preparation_qualification_draft.py tests/r215/test_p01_filter_metadata_successor_draft.py
+python -m pytest -q tests/r215/test_r215_fade_target.py tests/r215/test_r215_fade_target_guard.py tests/r215/test_r215_fade_target_review.py tests/r215/test_owned_proxy_fade_draft.py tests/r215/test_stock_route_draft.py
+```
+
+The added node scopes are audio preparation **150** plus dual-CPU raw **8**, LT business **46** plus native coverage **11** plus restoration successor **52** and dual-CPU raw **60**, filter metadata successor **27**, and owned fade **18** plus stock-route **10**. Together with the original224 scope this describes **606** nodes. These are coverage counts, not a claimed public execution result.
+
+Five audio function archives retain their exact original raw hashes. `lt_original_reference.py` contains only four compressed original numeric function/class fragments, with their original raw SHA and full-code metadata pins. Public import declarations supply CPython's original compilation context and are compiled without execution; the code then receives current live globals through FunctionType, as in the original independent oracle. No complete commercial module archive is included. The initial LT tamper test is retained verbatim as `lt_prepare_tamper.original.py.txt`; the separately named collected successor corrects ctypes errcheck restoration while keeping its52 business/veto assertions unchanged.
+
+The three previously published original references are stored with exact-path `-text` attributes so Git line-ending conversion cannot invalidate their raw hashes. This is a focused numerical/output/currentness regression suite. Whole-show timing, actual MainWindow playback, cache persistence and full-release qualification remain separate acceptance work.

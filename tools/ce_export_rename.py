@@ -57,7 +57,9 @@ EXPORT_SOURCES = ("ce_engine.c", "ce_route.c", "ce_pool.c",
                   "ce_trajectory_api.inc", "ce_output_mask_count.inc",
                   "ce_curve_scalar_api.inc", "ce_programmer_row_api.inc",
                   "ce_programmer_library_api.inc", "ce_programmer_library_sort_api.inc", "ce_cold_clip_change_times.inc",
-                  "ce_filter_prepare.inc", "ce_fade_target.inc")
+                  "ce_filter_prepare.inc", "ce_fade_target.inc",
+                  "ce_audio_prepare_types.inc", "ce_audio_prepare_api.inc",
+                  "ce_lt_prepare_types.inc", "ce_lt_prepare_api.inc")
 
 _DECL_RE = re.compile(r"^\s*CE_API\s+(?:[\w\*]+\s+)*?\**(\w+)\s*\(", re.M)
 

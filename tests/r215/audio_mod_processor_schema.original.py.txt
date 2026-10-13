@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+SOURCE_KEYS = ("energy", "beat_strength", "band_low", "band_mid", "band_high", "onset_flux")
+
+_LIGHT_PUMP = ["r", "g", "b", "w", "dimmer", "pump"]
+
+def _param(label, default, minimum, maximum, step):
+    return {"label": label, "default": default, "min": minimum, "max": maximum, "step": step}
+
+PROCESSOR_CATALOG = {
+    "slice": {"label": "节奏切片", "description": "把已有灯水动作切成拍内短句。",
+              "source": "beat_strength", "targets": _LIGHT_PUMP + ["valve"], "params": {
+                  "division": _param("每拍切片数", 2, 1, 16, 1),
+                  "duty": _param("开启比例", .5, .05, .95, .01),
+                  "phase": _param("相位（周期）", 0., -1., 1., .01),
+                  "floor": _param("关闭时力度", 0., 0., 1., .01),
+                  "edge": _param("边沿（周期）", .02, 0., .25, .01)}},
+    "accent": {"label": "重音与呼吸", "description": "跟随音频强调或压低已有灯水力度。",
+               "source": "energy", "targets": list(_LIGHT_PUMP), "params": {
+                   "floor": _param("最低力度比例", .25, 0., 1., .01),
+                   "curve": _param("响应曲线", 1., .25, 4., .05),
+                   "mode": {"label": "响应", "default": "accent",
+                            "choices": ["accent", "duck"]}}},
+    "motion": {"label": "运动塑形", "description": "围绕已有轴基准收放原运动幅度。",
+               "source": "energy", "targets": ["motor_x", "motor_y", "motor_z"], "params": {
+                   "min_scale": _param("最小幅度比例", .25, 0., 1., .01),
+                   "max_scale": _param("最大幅度比例", 1., 0., 1., .01)}},
+    "color": {"label": "色彩回应", "description": "旋转已有RGB色相，保持最大分量亮度。",
+              "source": "band_high", "targets": ["r", "g", "b"], "params": {
+                  "hue_deg": _param("色相偏移（度）", 30., -180., 180., 1.)}},
+}
+
+def _numeric(value, default):
+    try:
+        number = float(value)
+    except (ValueError, TypeError):
+        return default
+    return number if math.isfinite(number) else default
+
+def _normalize_param(value, spec):
+    if "choices" in spec:
+        return value if value in spec["choices"] else spec["default"]
+    number = min(spec["max"], max(spec["min"], _numeric(value, spec["default"])))
+    return int(round(number)) if isinstance(spec["default"], int) else number
+
+def _targets(raw, allowed):
+    values = raw if isinstance(raw, (list, tuple)) else []
+    canonical = {channel_type_key(value) for value in values}
+    return list(allowed) if raw is None else [key for key in allowed if key in canonical]
+
+def _row(raw, index):
+    kind = str(raw.get("kind", ""))
+    spec = PROCESSOR_CATALOG.get(kind)
+    if spec is None:
+        return None
+    raw_params = raw.get("params")
+    params = raw_params if isinstance(raw_params, dict) else {}
+    params = {key: _normalize_param(params.get(key, value["default"]), value)
+              for key, value in spec["params"].items()}
+    if kind == "motion":
+        params["min_scale"], params["max_scale"] = sorted((params["min_scale"], params["max_scale"]))
+    source = str(raw.get("source", spec["source"]))
+    return {"id": str(raw.get("id") or f"{kind}-{index}"), "kind": kind,
+            "enabled": bool(raw.get("enabled", True)),
+            "wet": min(1., max(0., _numeric(raw.get("wet", 1.), 1.))),
+            "source": source if source in SOURCE_KEYS else spec["source"],
+            "targets": _targets(raw.get("targets"), spec["targets"]), "params": params}
+
+def normalize_processors(raw):
+    """Bounded ordered rows; explicit invalid targets remain empty (safe no-op)."""
+    if not isinstance(raw, (list, tuple)):
+        return []
+    rows = []
+    for index, value in enumerate(raw[:32]):
+        if not isinstance(value, dict):
+            continue
+        row = _row(value, index)
+        if row is not None:
+            rows.append(row)
+    return rows
+
+def processor_key(rows):
+    """Full ordered semantic fingerprint, suitable for original bake invalidation."""
+    return tuple((r["id"], r["kind"], r["enabled"], r["wet"], r["source"],
+                  tuple(r["targets"]), tuple(sorted(r["params"].items())))
+                 for r in normalize_processors(rows))

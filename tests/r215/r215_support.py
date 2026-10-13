@@ -65,3 +65,33 @@ def mounted_world(qapp, monkeypatch):
         yield owned
     finally:
         stack.close()
+
+
+def make_stateful_project(kind):
+    project = synthetic_project()
+    first = project.tracks[0].clips[0]
+    first.duration = 6.
+    if kind == "light_tracking":
+        definition = project.fixture_defs[0]
+        definition.channels = ["pump", "R", "G", "B"]
+        definition.channel_count = 4
+        for index, fixture in enumerate(project.fixtures):
+            fixture.start_channel = 1 + index * 4
+        first.light_tracking_enabled = True
+        first.light_tracking_threshold = 16
+        first.light_tracking_attack, first.light_tracking_release = .11, .31
+    elif kind == "motor_speed_limit":
+        project.fixture_defs[0].channels = ["motor_x"]
+        first.motor_speed_limit_dps = 90.
+    else:
+        from src.core.models import Track
+        from src.engine.audio_mod_draw_compile import compile_graph
+        for track in project.tracks:
+            track.parent_id = "r214-audio-folder"
+        project.tracks.insert(0, Track(id="r214-audio-folder", is_folder=True))
+        project.audio_modulation_state = compile_graph(
+            {"nodes": [dict(id="r214-rule", kind="rule", ch_type="pump",
+                            wave="", amount=.5)], "edges": []},
+            dict(scope_folder_id="r214-audio-folder", target_ch_types=["pump"],
+                 attack=0., release=0., clips=[dict(start=0., end=10.)]))
+    return project

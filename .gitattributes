@@ -8,3 +8,8 @@
 *.ico binary
 *.xlsx binary
 *.dmxt binary
+
+# Preserve the three already published frozen original raw hashes.
+tests/r215/cross_track_original.py.txt -text
+tests/r215/original_filter_functions.py.txt -text
+tests/r215/original_reference.py -text

@@ -1,0 +1,161 @@
+"""Independent prebinding/current source/class/DLL/ABI tamper controls, ROOT only."""
+import ctypes as ct
+import importlib.util
+from pathlib import Path
+from types import FunctionType, SimpleNamespace
+
+import pytest
+
+from r215_support import mounted_world
+
+HERE = Path(__file__).resolve().parent
+
+
+def business():
+    path = HERE / 'test_lt_original_business_draft.py'
+    spec = importlib.util.spec_from_file_location('_r215_c07_tamper_business', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def cell(value):
+    def closure():
+        return value
+    return closure.__closure__[0]
+
+
+def caller_for(owner, api):
+    old = owner.caller
+    values = dict(zip(old.__code__.co_freevars, (item.cell_contents for item in old.__closure__)))
+    values.update(orig=owner.original, _lt_owner=None, _lt_prepare_fn=api.public_prepare,
+                  _lt_prepare_meta=(api.public_prepare.__code__, api.public_prepare.__defaults__, api.public_prepare.__kwdefaults__))
+    return FunctionType(old.__code__, old.__globals__, old.__name__, old.__defaults__,
+                        tuple(cell(values[name]) for name in old.__code__.co_freevars))
+
+
+def same_code_foreign_globals(function):
+    return FunctionType(function.__code__, dict(function.__globals__), function.__name__,
+                        function.__defaults__, function.__closure__)
+
+
+@pytest.fixture
+def world(mounted_world):
+    import qascade_ce
+    from qascade_ce import native_lt_prepare as api
+    from qascade_ce import native_lt_prepare_scope as scope
+    from qascade_ce import native_lt_prepare_metadata as metadata
+    from qascade_ce import native_lt_prepare_identity as identity
+    from qascade_ce import native_lt_prepare_types as types
+    b = business()
+    oracle, project, clip, reference, engine = b.make_world(mounted_world)
+    assert api._OWNER is not None and api._OWNER.admission()
+    result = SimpleNamespace(ce=qascade_ce, api=api, scope=scope, metadata=metadata,
+        identity=identity, types=types, b=b, oracle=oracle, project=project, clip=clip,
+        reference=reference, engine=engine, owner=api._OWNER, restore=[])
+    try:
+        yield result
+    finally:
+        for function in reversed(result.restore):
+            function()
+
+
+EARLY = ('supplier', 'supplier_globals', 'builder', 'builder_globals', 'metadata_globals',
+         'api_binding_alias', 'integer_primitive', 'public_constructor', 'public_constructor_globals',
+         'clip_descriptor', 'field_order', 'value_layout', 'request_layout', 'report_layout',
+         'plain_types', 'symbols', 'default_attack', 'ltparams_setattr', 'field_descriptor', 'pack_option')
+LATE = EARLY + ('argtypes', 'restype', 'errcheck', 'functions', 'dll_cache', 'map_inplace',
+                'lt_argtypes', 'lt_errcheck', 'admission', 'admission_code', 'public_code')
+
+
+def set_errcheck(world, function):
+    original = function.errcheck
+    function.errcheck = lambda *args: 0
+    def restore():
+        if original is None:
+            del function.errcheck
+        else:
+            function.errcheck = original
+    world.restore.append(restore)
+
+
+def mutate(w, monkeypatch, kind):
+    from qascade_ce import native_binding, lt_path
+    from src.engine import playback_engine as pe
+    if kind == 'supplier': monkeypatch.setattr(native_binding, 'bind_native', lambda *a: None)
+    elif kind == 'supplier_globals': monkeypatch.setattr(native_binding, 'bind_native', same_code_foreign_globals(native_binding.bind_native))
+    elif kind == 'builder': monkeypatch.setattr(w.metadata, 'build_params', lambda *a: None)
+    elif kind == 'builder_globals': monkeypatch.setattr(w.metadata, 'build_params', same_code_foreign_globals(w.metadata.build_params))
+    elif kind == 'metadata_globals': monkeypatch.setitem(vars(w.metadata), 'float', lambda *a: .01)
+    elif kind == 'api_binding_alias': monkeypatch.setattr(w.api, 'bind_native', lambda *a: None)
+    elif kind == 'integer_primitive': monkeypatch.setattr(w.metadata, '_integer', lambda *a: None)
+    elif kind == 'public_constructor': monkeypatch.setattr(lt_path.LtParams, '__init__', lambda *a: None)
+    elif kind == 'public_constructor_globals': monkeypatch.setattr(lt_path.LtParams, '__init__', same_code_foreign_globals(lt_path.LtParams.__init__))
+    elif kind == 'clip_descriptor': monkeypatch.setattr(w.owner.clip_type, 'light_tracking_threshold', property(lambda self: 128))
+    elif kind == 'field_order': monkeypatch.setattr(w.metadata, 'FIELDS', tuple(reversed(w.metadata.FIELDS)))
+    elif kind in ('value_layout', 'request_layout', 'report_layout'):
+        target = {'value_layout': w.types.Value, 'request_layout': w.types.Request, 'report_layout': w.types.Report}[kind]
+        fields, original = target._fields_, target._fields_[0]
+        fields[0] = ('foreign', original[1])
+        w.restore.append(lambda: fields.__setitem__(0, original))
+    elif kind == 'plain_types': monkeypatch.setattr(w.metadata, 'PLAIN', (object,))
+    elif kind == 'symbols': monkeypatch.setattr(w.api, 'SYMBOLS', tuple(reversed(w.api.SYMBOLS)))
+    elif kind == 'default_attack': monkeypatch.setattr(pe, 'DEFAULT_LIGHT_TRACKING_ATTACK', .09)
+    elif kind == 'ltparams_setattr': monkeypatch.setattr(lt_path.LtParams, '__setattr__', lambda *a: None)
+    elif kind == 'field_descriptor': monkeypatch.setattr(w.types.Report, 'threshold', property(lambda self: 128))
+    elif kind == 'pack_option': monkeypatch.setattr(w.types.Request, '_pack_', 1, raising=False)
+    elif kind == 'argtypes': monkeypatch.setattr(w.owner.binding.functions[0], 'argtypes', [])
+    elif kind == 'restype': monkeypatch.setattr(w.owner.binding.functions[0], 'restype', ct.c_double)
+    elif kind == 'errcheck': set_errcheck(w, w.owner.binding.functions[0])
+    elif kind == 'functions': monkeypatch.setattr(w.owner.binding, 'functions', tuple(reversed(w.owner.binding.functions)))
+    elif kind == 'dll_cache': monkeypatch.setitem(vars(w.owner.binding.engine.dll), w.owner.guard.native.symbols[0], object())
+    elif kind == 'map_inplace': monkeypatch.setitem(w.owner.guard.native.map, w.api.SYMBOLS[0], 'foreign_ltp_symbol')
+    elif kind == 'lt_argtypes': monkeypatch.setattr(w.owner.binding.engine.ce_lt_apply, 'argtypes', [])
+    elif kind == 'lt_errcheck': set_errcheck(w, w.owner.binding.engine.ce_lt_apply)
+    elif kind == 'admission': monkeypatch.setattr(w.owner, 'admission', lambda: True)
+    elif kind == 'admission_code': monkeypatch.setattr(w.owner.admission.__func__, '__code__', (lambda self: True).__code__)
+    elif kind == 'public_code': monkeypatch.setattr(w.api.public_prepare, '__code__', (lambda owner, clip: (None, None)).__code__)
+    else: raise AssertionError(kind)
+
+
+def test_current_and_fresh_prebinding_positive_without_foreign_mutation(world):
+    w = world
+    assert w.owner.admission()
+    caller = caller_for(w.owner, w.api)
+    guard = w.scope.capture(w.owner.binding.engine, w.owner.original, caller, w.owner.params_type)
+    assert guard is not None, 'Every negative case needs a reachable strict positive prebinding control'
+    before = w.api.counters()
+    raw = w.b.raw_frame()
+    expected = w.oracle.pe_original()(w.reference, w.clip, raw.copy(), 1, .2, w.project).copy()
+    actual = w.engine._apply_clip_light_tracking(w.clip, raw, 1, .2, w.project)
+    assert actual.tobytes() == expected.tobytes() and w.api.counters()['calls'] == before['calls'] + 1
+
+
+@pytest.mark.parametrize('kind', EARLY)
+def test_first_capture_foreign_metadata_refuses_before_native_binding(world, monkeypatch, kind):
+    w = world
+    caller = caller_for(w.owner, w.api)
+    before = w.api.counters()
+    mutate(w, monkeypatch, kind)
+    monkeypatch.setattr(w.api, '_OWNER', None)
+    assert w.api.install(w.owner.binding.engine, w.owner.original, caller, w.owner.params_type) is None
+    assert w.api._OWNER is None
+    after = w.api.counters()
+    assert after['calls'] == before['calls'] and after['native_errors'] == before['native_errors']
+
+
+@pytest.mark.parametrize('kind', LATE)
+def test_late_metadata_change_never_enters_new_numeric_or_lt_c_and_whole_original_once(world, monkeypatch, kind):
+    w = world
+    before, lt_before = w.api.counters(), w.ce._LT_APPLY_CNT[0]
+    raw = w.b.raw_frame()
+    # Derive the exact business reference after the same metadata mutation;
+    # archived source keeps original math, canonical live globals keep context.
+    mutate(w, monkeypatch, kind)
+    expected = w.oracle.pe_original()(w.reference, w.clip, raw.copy(), 1, .2, w.project).copy()
+    actual = w.engine._apply_clip_light_tracking(w.clip, raw, 1, .2, w.project)
+    assert actual.tobytes() == expected.tobytes()
+    assert w.b.temporal(w.engine) == w.b.temporal(w.reference)
+    after = w.api.counters()
+    assert after['calls'] == before['calls'] and after['native_errors'] == before['native_errors']
+    assert w.ce._LT_APPLY_CNT[0] == lt_before

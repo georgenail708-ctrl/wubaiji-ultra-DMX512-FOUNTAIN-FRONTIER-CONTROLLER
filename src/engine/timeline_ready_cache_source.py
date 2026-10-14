@@ -9,6 +9,8 @@ from .timeline_ready_playback import (prepare_ready_frame, apply_ready_exit,
                                        finish_ready_frame, reject_ready_source)
 from .timeline_temporal_replay import (replay_owns_lock, claim_outer_lock,
                                        retire_outer_lock)
+from .timeline_local_render_owner import (has_local_owner, borrow_local_frame,
+                                         return_local_frame)
 
 
 _READY_FIELDS = {
@@ -65,6 +67,8 @@ def render_cached_frame(engine, now, layer):
 def acquire_render_lock(engine):
     if replay_owns_lock(engine):
         return True
+    if has_local_owner(engine):
+        return borrow_local_frame(engine)
     if not engine._render_lock.acquire(blocking=False):
         return False
     claim_outer_lock(engine)
@@ -87,7 +91,8 @@ def release_render_lock(engine):
         try:
             retire_outer_lock(engine)
         finally:
-            engine._render_lock.release()
+            if not return_local_frame(engine):
+                engine._render_lock.release()
 
 
 def read_cached_pair(frames, records, index, *, reader):

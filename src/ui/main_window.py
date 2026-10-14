@@ -74,11 +74,12 @@ from .main_icon_library import make_main_icon, load_tabler_icon
 from .editor_chrome import install_editor_chrome
 from .audio_mod_workspace_binding import (install_audio_workspace, prepare_audio_workspace,
                                          refresh_audio_workspace, dispose_audio_workspace)
-from .widget_kit import NumSlider  # D 波标准件：极简数值滑杆
+from .depence_preview_import import prepare_imported_fixture_context, retain_preview_import_sources
+from .blender_kit import NumSlider  # D 波标准件：Blender 式数值滑杆
 from .responsive_tiers import (  # R173：分级隐藏 + 默认窗口尺寸，新模块零方法侵入
     install_panel_toolbar_tiers, default_main_window_size)
 
-# ── 主题设计令牌：优先引用中心主题（唯一真源），缺失时回退为同值字面 ──
+# ── Blender 设计令牌：优先引用中心主题（唯一真源），缺失时回退为同值字面 ──
 try:
     from .qascade_theme import (
         themed_button_stylesheet as _themed_btn,
@@ -145,7 +146,7 @@ except ImportError:
     TimelineRuler = None  # type: ignore
 
 
-# 旧常量名 → 主题令牌别名（历史引用统一走令牌；语义见右侧注释）
+# 旧常量名 → Blender 令牌别名（历史引用统一走令牌；语义见右侧注释）
 DARK_BG = BG_ROOT            # 主窗根底
 PANEL_BG = BG_EDITOR         # 面板/卡片基底
 ACCENT = FOCUS_BLUE          # 兼容别名：仅描边/聚焦语义
@@ -257,7 +258,7 @@ def _css_flat_block(fill_hex: str, base_alpha: int, fg: str,
         f" border-color:{FIELD_DISABLED_BORDER}; }}"
     )
     if checkable:
-        # 激活态：同族底加深 + 亮色描边（选中态语义）
+        # 激活态：同族底加深 + 亮色描边（Blender checked 语义）
         qss += (
             f"QPushButton:checked {{ background:{_rgba_i(fill_hex, min(200, base_alpha + 55))};"
             f" border-color:{fg}; }}"
@@ -1225,7 +1226,7 @@ class _MicLevelBar(QWidget):
         w, h = self.width(), self.height()
         # 背景
         p.fillRect(0, 0, w, h, QColor(BG_ROOT))
-        # 电平条（阈值 0.6/0.85 断点保持不变；颜色映射到 主题亮色家族）
+        # 电平条（阈值 0.6/0.85 断点保持不变；颜色映射到 Blender 亮色家族）
         fill_w = int(w * self._level)
         if fill_w > 0:
             # 根据电平高低变色：绿色→黄色→红色
@@ -1530,7 +1531,7 @@ class PanelToolbar(QWidget):
 
     @staticmethod
     def _audio_source_qss(first: bool = False, last: bool = False) -> str:
-        """音频源三连「单选胶囊」共用样式（D 条）。
+        """音频源三连「Blender 单选胶囊」共用样式（D 条）。
 
         首尾按钮保留外侧圆角，中段直角拼成一体（margin-left -1px 使相邻
         描边贴合不重线）；选中态 = select_blue 底白字，非激活 = 透明底
@@ -2065,7 +2066,7 @@ class _ProgramRow(QWidget):
 #  MainWindow
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _stop_timeline_writer(win) -> None:
+def _stop_timeline_writer(win) -> bool:
     """停掉时间线生成线程这一 clip 层写入者（"全清空"必须连写入者一起停）。
 
     ★★ 2026-09-17 深查修正：全清空旧链路只 `release_all_outputs()` + `invalidate_all_caches`
@@ -2077,9 +2078,15 @@ def _stop_timeline_writer(win) -> None:
         tw = getattr(win, "_timeline_widget", None)
         ctrl = getattr(tw, "ctrl", None) if tw is not None else None
         if ctrl is not None and hasattr(ctrl, "stop"):
-            ctrl.stop()
-    except Exception:
-        pass
+            from .timeline.timeline_sntc_control import release_external
+            release_external(ctrl)
+            return ctrl.stop() is not False
+        return True
+    except Exception as error:
+        status = getattr(win, '_status', None)
+        if status is not None:
+            status.set_message('全清空未完成：时间线接管未能停止，保持当前输出。' + str(error)[:160])
+        return False
 
 
 def _stop_audio_bridge_output(abw) -> None:
@@ -3128,7 +3135,11 @@ class MainWindow(QMainWindow):
         self._act(fm, "导出帧数据…", slot=self._export_frames, icon_key="export")
         self._act(fm, "导出 MVR (.mvr)…", slot=self._export_mvr, icon_key="export")
         fm.addSeparator()
-        self._act(fm, "导入配接表 (CSV)…", slot=self._import_patch_table, icon_key="patch")
+        self._act(fm, "导入 DEPENCE 工程 (.depence)…", slot=self._import_depence_project, icon_key="patch")
+        self._act(fm, "导入 DEPENCE 节目时间线 (.depence)…", slot=self._import_depence_sequences, icon_key="programs")
+        self._act(fm, "导入 DEPENCE 效果库 (.cfo/.depence)…", slot=self._import_depence_cfo, icon_key="patch")
+        self._act(fm, "导入 DEPENCE 录制流 (.oss/.depence)…", slot=self._import_depence_oss, icon_key="programs")
+        self._act(fm, "导入配接表 (DEPENCE R4 CSV)…", slot=self._import_patch_table, icon_key="patch")
         fm.addSeparator()
         self._act(fm, "退出(&Q)", QKeySequence.StandardKey.Quit, self.close, icon_key="exit")
 
@@ -3213,6 +3224,8 @@ class MainWindow(QMainWindow):
 
         nm_menu = mb.addMenu("网络(&N)")
         self._act(nm_menu, "启动网络", slot=self._start_network, icon_key="network_start")
+        from .sntc_sync_binding import open_sntc_sync
+        self._act(nm_menu, "开启SNTC同步", slot=lambda: open_sntc_sync(self), icon_key="network_start")
         self._act(nm_menu, "停止网络", slot=self._stop_network, icon_key="network_stop")
         nm_menu.addSeparator()
         self._act(nm_menu, "网络配置…",
@@ -3220,6 +3233,7 @@ class MainWindow(QMainWindow):
 
         hm = mb.addMenu("帮助(&H)")
         self._act(hm, "使用教程 / 说明书", slot=self._open_tutorial, icon_key="about")
+        self._act(hm, "DEPENCE R4 官方文档", slot=self._open_depence_docs, icon_key="about")
         hm.addSeparator()
         self._act(hm, "自动保存设置…", slot=self._show_auto_save_settings, icon_key="project_save")
         hm.addSeparator()
@@ -3334,7 +3348,7 @@ class MainWindow(QMainWindow):
         )
         blend_btn.setFixedHeight(22)   # 与主工具栏行同高
         blend_btn.setMinimumWidth(44)  # 弹性宽度，不再钉死
-        # 2026-08-27 用户点名去绿：极简中性切换——选中=提亮面+白字+蓝描边，
+        # 2026-08-27 用户点名去绿：Blender 式中性切换——选中=提亮面+白字+蓝描边，
         # 语义只保留文字本身（直出/软压），不再使用任何绿色。
         blend_btn.setStyleSheet(
             "QToolButton { background:transparent; color:" + TEXT_SECONDARY + ";"
@@ -3376,7 +3390,8 @@ class MainWindow(QMainWindow):
         if nm is None:
             return
         self._pause_live_effect_outputs()
-        _stop_timeline_writer(self)   # 停 clip 写入者（否则清完 ≤23ms 写回）
+        if not _stop_timeline_writer(self):  # 尚存 writer 时不能宣称完成清空
+            return
         try:
             _release_all_outputs_for_ui(nm)
         except Exception:
@@ -3520,7 +3535,7 @@ class MainWindow(QMainWindow):
         # 弱提示，靠上 12px 左侧占位、右侧让空，时间线整体禁用期间不遮挡。
         # 纯视觉层：仅由 _apply_timeline_program_gate 控制显隐，不参与业务判断。
         gate_chip = QWidget()
-        # R49 空态卡重制：极简中性信息卡（弃警示琥珀）——
+        # R49 空态卡重制：Blender 式中性信息卡（弃警示琥珀）——
         # 居中悬浮、暗卡浅边、info 蓝图标、主/副双行文案，纯展示无警示感。
         gate_chip.setObjectName("gateChip")
         gate_chip.setStyleSheet(
@@ -3798,6 +3813,12 @@ class MainWindow(QMainWindow):
                     import time as _t
                     def _clock_source(_ctrl=ctrl):
                         try:
+                            bridge = vars(_ctrl).get('_sntc_bridge')
+                            if bridge is not None:
+                                from ..engine.timeline_sntc_source_guard import controller_external_clock
+                                external = controller_external_clock(_ctrl, bridge)
+                                if external is not None:
+                                    return external
                             if not bool(getattr(_ctrl, "_playing", False)):
                                 return (False, 0.0)
                             t0 = float(getattr(_ctrl, "_play_t0", 0.0) or 0.0)
@@ -3810,8 +3831,11 @@ class MainWindow(QMainWindow):
                             _e.start_gen_thread()
                         except Exception:
                             pass
-                    def _gen_on_stop(_pos, _e=self._engine):
+                    def _gen_on_stop(_pos, _e=self._engine, _ctrl=ctrl):
                         try:
+                            bridge = vars(_ctrl).get('_sntc_bridge')
+                            if bridge is not None and bridge.keep_generator():
+                                return
                             _e.stop_gen_thread()
                         except Exception:
                             pass
@@ -3820,6 +3844,13 @@ class MainWindow(QMainWindow):
 
                 def _render_clip_layer(pos, _ctrl=ctrl, _engine=self._engine):
                     try:
+                        bridge = vars(_ctrl).get('_sntc_bridge')
+                        if bridge is not None and bridge.holds_external():
+                            external = bridge.generator_clock()
+                            if external is not None and external[0] and _engine.gen_thread_active():
+                                return
+                            _engine._render_position(float(pos), layer_name="clip_playback")
+                            return
                         if bool(getattr(_ctrl, "is_playing", False)):
                             # 生成线程模式：播放态 render 由生成线程独立驱动，UI tick 不再重复 render
                             # (只保留播针/面板更新经其它消费者)。避免双重 render + 让 UI tick 更轻。
@@ -3866,8 +3897,10 @@ class MainWindow(QMainWindow):
             # 播放/预览层与编辑器层分离：暂停或拖针不会清空 Programmer/Matrix 等编辑器数据。
             # 只有明确停止回到 0 秒时，才清理 clip 播放/预览层；编辑层始终不动。
             if self._nm is not None and hasattr(self._nm, "clear_layer"):
-                def _clear_timeline_layer_on_stop(pos, _nm=self._nm):
+                def _clear_timeline_layer_on_stop(pos, _nm=self._nm, _ctrl=ctrl):
                     try:
+                        if bool(vars(_ctrl).get('_sntc_applying')):
+                            return
                         if float(pos or 0.0) <= 1e-6:
                             for _layer in ("clip_playback", "clip_preview", "timeline"):
                                 _nm.clear_layer(_layer)
@@ -4161,7 +4194,7 @@ class MainWindow(QMainWindow):
         self.addDockWidget(area, dock)
         return dock
 
-    #: 各 dock 的可用最小宽（区域有合理下限，中央区让路；
+    #: 各 dock 的可用最小宽（Blender 契约：区域有合理下限，中央区让路；
     #: 之前的问题是 900~1090 的病态下限锁死窗口，而非"存在下限"本身）。
     _DOCK_MIN_WIDTHS = {
         "节目管理": 176, "Patch_配接": 240, "设备组": 240,
@@ -4423,9 +4456,9 @@ class MainWindow(QMainWindow):
 
         # C 条：空态占位（分「无节目」/「无匹配」两种）
         try:
-            from .widget_kit import EmptyState as _EmptyState
+            from .blender_kit import EmptyState as _EmptyState
             self._program_empty_none = _EmptyState(
-                "还没有节目", "请先新建一个节目。",
+                "还没有节目", "新建一个节目，或从「文件」菜单导入 DEPENCE 工程",
                 icon_key="list-details")
             self._program_empty_match = _EmptyState(
                 "无匹配节目", "换个搜索关键词试试", icon_key="search")
@@ -7179,6 +7212,14 @@ class MainWindow(QMainWindow):
                 pass
 
     def _timeline_play(self):
+        controller = getattr(self._timeline_widget, 'ctrl', None) if self._timeline_widget is not None else None
+        from .timeline.timeline_sntc_control import _bridge
+        bridge = _bridge(controller) if controller is not None else None
+        if bridge is not None:
+            return bridge.local_action(self._timeline_play_local)
+        self._timeline_play_local()
+
+    def _timeline_play_local(self):
         if not self._require_active_program("播放时间线"):
             try:
                 self._transport.set_playing(False)
@@ -7219,13 +7260,13 @@ class MainWindow(QMainWindow):
     def _play(self):
         if self._use_timeline_widget and self._timeline_widget and not self._require_active_program("播放时间线"):
             return
-        if self._effect_browser_widget and self._effect_browser_widget._is_playing:
-            self._effect_browser_widget._on_stop()
         if self._use_timeline_widget and self._timeline_widget:
             ctrl = getattr(self._timeline_widget, "ctrl", None)
             if ctrl is not None:
                 self._timeline_play()
                 return
+        if self._effect_browser_widget and self._effect_browser_widget._is_playing:
+            self._effect_browser_widget._on_stop()
         if self._engine and hasattr(self._engine, "play"):
             if not self._require_active_program("播放时间线"):
                 return
@@ -7244,7 +7285,8 @@ class MainWindow(QMainWindow):
         if self._use_timeline_widget and self._timeline_widget:
             ctrl = getattr(self._timeline_widget, "ctrl", None)
             if ctrl is not None:
-                ctrl.stop()
+                if ctrl.stop() is False:
+                    return
                 self._transport.update_position(0.0)
                 return
         if self._engine and hasattr(self._engine, "stop"):
@@ -7260,7 +7302,8 @@ class MainWindow(QMainWindow):
         if self._use_timeline_widget and self._timeline_widget:
             ctrl = getattr(self._timeline_widget, "ctrl", None)
             if ctrl is not None:
-                ctrl.seek(pos)
+                if ctrl.seek(pos) is False:
+                    return
                 self._transport.update_position(pos)
                 return
         if self._engine and hasattr(self._engine, "seek"):
@@ -7284,14 +7327,15 @@ class MainWindow(QMainWindow):
         total_sec = artnet_timecode_seconds(hours, minutes, seconds, frames, tc_type)
         if total_sec is None:
             return
-        self._status.set_timecode(hours, minutes, seconds, frames)
-
         if self._use_timeline_widget and self._timeline_widget:
             ctrl = getattr(self._timeline_widget, "ctrl", None)
             if ctrl is not None:
-                ctrl.seek(total_sec)
+                if ctrl.seek(total_sec) is False:
+                    return
+                self._status.set_timecode(hours, minutes, seconds, frames)
                 self._transport.update_position(total_sec)
                 return
+        self._status.set_timecode(hours, minutes, seconds, frames)
         self._seek(total_sec)
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -9577,10 +9621,10 @@ class MainWindow(QMainWindow):
         save_project_async(self, path)
 
     def _export_mvr(self):
-        """导出 MVR (.mvr) — 行业开放标准，主流灯光软件均可导入。
+        """导出 MVR (.mvr) — 行业开放标准，DEPENCE/grandMA3/wysiwyg 均可导入。
 
         从当前工程的设备实例生成 MVR（设备名/DMX地址/2D位置/占位GDTF引用），
-        实现 Qascade→反向配接同步。
+        实现 Qascade→DEPENCE 反向配接同步。
         """
         from PyQt6.QtWidgets import QFileDialog, QMessageBox
         from .export_mvr import export_mvr
@@ -9607,7 +9651,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 # 降级为传统对话框
                 QMessageBox.information(self, "导出 MVR", msg +
-                                        "\n\n可在 R4 中通过 MVR 导入此配接布局。")
+                                        "\n\n可在 DEPENCE R4 中通过 MVR 导入此配接布局。")
         else:
             QMessageBox.warning(self, "导出 MVR", msg)
 
@@ -9658,8 +9702,372 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
             self._status.clearMessage()
 
+    def _import_depence_project(self):
+        """导入 DEPENCE 工程 (.depence) — 直接解出所有通道定义，取代 CSV 手填。
+
+        相较 CSV 导入，本入口从 project.xml 解出每条通道的功能（Pan/Tilt/RGB/
+        Pump…）与默认值，建设备类型时通道**已填满**，用户无需在 Patch 面板逐台手填。
+        复用 group_by_type 把 PatchRow 转 TypeGroup，第 2 步 _finalize_patch_import 全共用。
+        """
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from .import_depence import read_depence_project_ext, fixture_type_to_channels
+        from .import_patch_csv import group_by_type, skipped_container_types
+        from ..core.models import FixtureDefinition
+        proj = self._project()
+        if proj is None:
+            QMessageBox.information(self, "导入 DEPENCE 工程", "请先新建或打开一个项目。")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "导入 DEPENCE 工程", "", "DEPENCE 工程 (*.depence);;所有文件 (*.*)")
+        if not path:
+            return
+        keys = self._discover_depence_keys(path)
+        try:
+            # 扩展解析：额外返回选择组/包隶属/世界坐标链（TopView 文件夹分页 + 选择组用）
+            # 第 8/9 元 = project.xml 根节点 + 单遍扫描（供 _finalize 复用
+            # 于样条解析，避免整档重解析——至冬7.0 全量 ET 解析 ~7s，导入提速主项）。
+            parsed = self._import_busy(
+                "正在解析 DEPENCE 工程…",
+                lambda: read_depence_project_ext(path, keys))
+            rows, ftypes, warnings, sel, fmap, patched, guid_to_key, \
+                project_root, project_scan = parsed
+        except Exception as e:
+            QMessageBox.critical(self, "导入 DEPENCE 工程", f"导入失败：{e}")
+            return
+        if not rows:
+            enc_hint = ""
+            if any("加密" in w for w in warnings):
+                enc_hint = ("\n\n（内置密钥与自动破解均未能解开此工程——若已取消破解可重试；"
+                            f"或把正确的内部密钥写入 “{path}.bkkeys”（三个 16 进制数）覆盖。）")
+            QMessageBox.warning(self, "导入 DEPENCE 工程",
+                                "未读取到任何配接设备。\n" + "\n".join(warnings) + enc_hint)
+            return
+        groups = group_by_type(rows, patchable_only=True)
+        if not groups:
+            QMessageBox.warning(self, "导入 DEPENCE 工程", "未发现可配接设备。")
+            return
+        # 通道定义按类型名索引（fixture_type_to_channels → channels/names/defaults/modes/groups）
+        chan_by_type = {ft.type_name: fixture_type_to_channels(ft) for ft in ftypes}
+        # 电机角度范围（MDD Yaw ±180 / 副池三维扇子 Rotation ±270，Z 轴扇面同步用）
+        ft_by_type = {ft.type_name: ft for ft in ftypes}
+        self._snapshot_for_undo()
+        # 幂等：按名复用已存在设备类型，缺失则新建（通道**已从 DEPENCE 解出、直接填入**）
+        existing = {fd.name: fd.id for fd in proj.fixture_defs}
+        existing_defs = {fd.name: fd for fd in proj.fixture_defs}
+        def_by_type = {}
+        new_defs = 0
+        filled = 0
+        ch_mismatch = []   # R2: 同名 def 通道与工程文件不一致（旧导入残留/手动改过）
+        for g in groups:
+            if g.type_name in existing:
+                def_by_type[g.type_name] = existing[g.type_name]
+                # ★ 已存在 def 与工程文件通道不一致时不静默保留：旧导入残留的
+                #   脏 def（如二仪/喷头被手填过 motor_y）重导入也永不更新，
+                #   用户会以为「修复没生效」。不自动覆盖（尊重手动配置），
+                #   导入结束统一提示，由用户到 Patch 面板删 def 重导。
+                fd_old = existing_defs.get(g.type_name)
+                src_chans, _nm, _df, _md, _grp = chan_by_type.get(
+                    g.type_name, (None, {}, {}, {}, {}))
+                if (fd_old is not None and src_chans
+                        and list(src_chans) != list(fd_old.channels)):
+                    ch_mismatch.append((g.type_name, list(fd_old.channels), list(src_chans)))
+                continue
+            chans, names, defaults, ch_modes, _ch_groups = chan_by_type.get(
+                g.type_name, (["placeholder"] * max(1, g.channel_count), {}, {}, {}, {}))
+            fd = FixtureDefinition(
+                name=g.type_name, channel_count=max(1, len(chans)),
+                channels=list(chans),
+                function_channel_names=dict(names),
+                function_channel_defaults=dict(defaults),
+                channel_modes=dict(ch_modes),
+                motor_ranges=dict(getattr(ft_by_type.get(g.type_name), "motor_ranges", {}) or {}))
+            proj.fixture_defs.append(fd)
+            def_by_type[g.type_name] = fd.id
+            new_defs += 1
+            if chans and not all(c == "placeholder" for c in chans):
+                filled += 1
+        if ch_mismatch:
+            shown = "\n".join(
+                "「%s」现有 %dch：%s\n     工程文件 %dch：%s" % (
+                    n, len(old), " ".join(old[:8]), len(new), " ".join(new[:8]))
+                for n, old, new in ch_mismatch[:5])
+            extra = "" if len(ch_mismatch) <= 5 else f"\n…另有 {len(ch_mismatch) - 5} 个类型"
+            QMessageBox.warning(
+                self, "导入 DEPENCE 工程",
+                f"{len(ch_mismatch)} 个设备类型的通道定义与工程文件不一致，已保留现有定义：\n\n"
+                f"{shown}{extra}\n\n"
+                "如需采用工程文件的通道（含修正的电机 X/Y/Z 轴），请先在 Patch 面板删除"
+                "这些类型后重新导入。")
+        self._pending_patch_import = retain_preview_import_sources({
+            "rows": rows, "groups": groups, "def_by_type": def_by_type, "src": path,
+            # 选择组模式数据（含选择组的工程 → 按文件夹分页 + 包折叠 + Programmer 组）
+            "depence_extra": (sel, fmap, patched, guid_to_key) if sel and sel.groups else None,
+            # project.xml 根节点 + 单遍扫描（_finalize 样条解析复用；用完即弃，finalize 结束清 ctx）
+            "project_root": project_root,
+            "project_scan": project_scan,
+        }, ftypes=ftypes, guid_to_key=guid_to_key)
+        # 打开 Patch 面板供核对（通道已填，可直接点「完成配接」）
+        self._toggle_dock(self._patch_dock, True)
+        if self._patch_widget is not None:
+            if hasattr(self._patch_widget, "refresh"):
+                self._patch_widget.refresh()
+            if hasattr(self._patch_widget, "begin_import_session"):
+                try:
+                    self._patch_widget.begin_import_session(
+                        on_finish=self._finalize_patch_import,
+                        def_ids=list(def_by_type.values()))
+                except TypeError:
+                    self._patch_widget.begin_import_session(on_finish=self._finalize_patch_import)
+        if self._pm is not None:
+            self._pm.project_changed.emit()
+        msg = (f"已从 DEPENCE 工程识别 {len(groups)} 个设备类型"
+               f"（新建 {new_defs} 个，其中 {filled} 个通道已自动解出）。\n"
+               f"通道功能已从工程文件解出，可直接核对后点左上「完成配接」。")
+        if warnings:
+            msg += "\n\n警告：\n" + "\n".join(warnings[:8])
+        QMessageBox.information(self, "导入 DEPENCE 工程 — 第 1 步", msg)
+        # 大多数类型已从 project.xml 解出；对少数未解出、仍为占位的类型主动唤起编辑框
+        if self._patch_widget is not None and hasattr(self._patch_widget, "open_placeholder_editors"):
+            self._patch_widget.open_placeholder_editors(list(def_by_type.values()))
+
+    def _discover_depence_keys(self, path):
+        """为加密 .depence 解析 ZipCrypto 内部密钥 (X,Y,Z)，必要时自动破解。
+
+        快路径（毫秒级）：验证候选密钥（`.bkkeys` 文件 / 环境变量 / 内置通用密钥），
+        命中即返回——现有全部工程走此路。
+        慢路径（约 60s）：候选全败且工程确已加密（如换密码的新版本）时，后台线程调
+        bkcrack 从工程自身恒定 XML 前缀恢复新密钥，恢复后缓存到 `<path>.bkkeys`。
+        未加密工程返回 None。纯文件格式密码分析，不触碰授权/DRM。
+        """
+        from .depence_key_resolver import (resolve_depence_keys,
+                                           is_project_encrypted, locate_bkcrack)
+        # 快路径：仅验证候选，不起攻击。命中或工程未加密时立即返回。
+        fast = resolve_depence_keys(path, allow_attack=False)
+        if fast is not None or not is_project_encrypted(path):
+            return fast
+        # 需要慢路径：无 bkcrack 则无法自破，返回 None 让上层给出覆盖提示。
+        if locate_bkcrack() is None:
+            return None
+        return self._recover_depence_keys_with_dialog(path)
+
+    def _recover_depence_keys_with_dialog(self, path):
+        """后台线程跑 bkcrack 恢复密钥，主线程显示可取消进度框。返回 keys 或 None。
+
+        取消经 threading.Event 传入攻击循环，令其 kill 子进程后自然收尾（不用
+        QThread.terminate，避免留下孤儿 bkcrack 进程）。
+        """
+        import threading
+
+        from PyQt6.QtCore import QThread, pyqtSignal
+        from PyQt6.QtWidgets import QProgressDialog
+
+        from .depence_key_resolver import resolve_depence_keys
+
+        cancel = threading.Event()
+
+        class _Worker(QThread):
+            progress = pyqtSignal(str, float)
+            done = pyqtSignal(object)
+
+            def __init__(self, archive):
+                super().__init__()
+                self._archive = archive
+
+            def run(self):
+                keys = resolve_depence_keys(
+                    self._archive,
+                    progress_cb=lambda m, p: self.progress.emit(m, p),
+                    cancel_cb=cancel.is_set)
+                self.done.emit(keys)
+
+        dlg = QProgressDialog("正在破解工程加密…", "取消", 0, 100, self)
+        dlg.setWindowTitle("DEPENCE 工程解密")
+        dlg.setMinimumDuration(0)
+        dlg.setValue(0)
+        result = {"keys": None}
+        worker = _Worker(path)
+        worker.progress.connect(
+            lambda m, p: (dlg.setLabelText(m), dlg.setValue(int(p * 100))))
+        worker.done.connect(lambda k: (result.__setitem__("keys", k), dlg.reset()))
+        dlg.canceled.connect(cancel.set)  # 取消 → 通知攻击循环 kill 子进程
+        worker.start()
+        dlg.exec()  # 模态；完成或取消后返回
+        worker.wait(5000)  # 等线程收尾（kill 后子进程即退，收尾很快）
+        # ★ R193/CC-04：wait 超时（bkcrack 静默计算期可达 ~60s）不得让局部
+        #   引用归零——QThread 运行中被析构 = 进程 abort。挂 self 由下次调用
+        #   或退出清理回收（finished→deleteLater 兜底）。
+        # ★ R194/NB-01：QThread 没有 is_alive（只有 isRunning）——R193 笔误
+        #   使解密对话框每次必抛 AttributeError，功能整体报废。
+        if worker.isRunning():
+            self._depence_key_worker = worker
+        try:
+            worker.finished.connect(lambda w=worker: (
+                setattr(self, "_depence_key_worker", None), w.deleteLater()))
+        except Exception:
+            pass
+        return result["keys"]
+
+    def _import_depence_sequences(self):
+        """导入 DEPENCE 工程内的节目时间线 (.depence → 多个 TimelineProgram)。
+
+        DEPENCE 每首曲目存为一个 `.show`（Depence2_Sequence，轨道+块结构与 Qascade
+        TimelineProgram/Track/Clip 1:1 同构）。本入口把工程内所有实质序列重建为可编辑
+        节目，导入后可在节目管理面板切换、在时间线二次编排。
+
+        加密工程（真实大工程）需已恢复的 ZipCrypto 内部密钥——见 _discover_depence_keys。
+        """
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from .import_depence_sequences import import_depence_programs
+        proj = self._ensure_project_program_fields()
+        if proj is None:
+            QMessageBox.information(self, "导入 DEPENCE 节目", "请先新建或打开一个项目。")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "导入 DEPENCE 节目时间线", "", "DEPENCE 工程 (*.depence);;所有文件 (*.*)")
+        if not path:
+            return
+        keys = self._discover_depence_keys(path)
+        try:
+            programs, warnings = self._import_busy(
+                "正在导入 DEPENCE 节目…",
+                lambda: import_depence_programs(path, keys))
+        except Exception as e:  # 损坏档/超大加密条目/意外格式 → 提示而非崩溃
+            QMessageBox.critical(self, "导入 DEPENCE 节目",
+                                 f"导入失败：{e}")
+            return
+        if not programs:
+            note = "\n".join(warnings[:8]) if warnings else "工程内无可导入的节目序列。"
+            enc_hint = ""
+            if any("加密" in w for w in warnings):
+                enc_hint = ("\n\n（内置密钥与自动破解均未能解开此工程——若已取消破解可重试；"
+                            f"或把正确的内部密钥写入 \"{path}.bkkeys\"（三个 16 进制数）覆盖。）")
+            QMessageBox.warning(self, "导入 DEPENCE 节目",
+                                "未导入任何节目。\n" + note + enc_hint)
+            return
+        self._snapshot_for_undo()
+        self._save_current_timeline_to_program()
+        added = []
+        for program in programs:
+            program.name = self._unique_program_name(program.name)
+            proj.programs.append(program)
+            added.append(program)
+        # 打开第一个新导入节目到时间线
+        first = added[0]
+        self._load_program_to_timeline(first.id, save_current=False)
+        self._refresh_program_list()
+        self.mark_dirty()
+        total_clips = sum(len(t.clips) for p in added for t in p.tracks)
+        msg = (f"已从 DEPENCE 工程导入 {len(added)} 个节目"
+               f"（共 {total_clips} 个片段），已打开第一个：\"{first.name}\"。\n"
+               f"可在节目管理面板切换其余节目，并在时间线二次编排。")
+        if warnings:
+            msg += "\n\n提示：\n" + "\n".join(warnings[:6])
+        QMessageBox.information(self, "导入 DEPENCE 节目", msg)
+
+    def _import_depence_oss(self):
+        """导入 DEPENCE 录制流 (.oss/.depence) → 逐帧 DMX 节目。
+
+        真实样本结论：.oss 为 SYNCRO 二进制录制流（fps=10、每设备 8 通道、平铺全局
+        通道索引、delta 编码、无 universe 概念）。桥接按设备分轨，只烘焙「有变化的帧
+        + 该帧累积全量状态」为 DMXFrame（clip.frames 回放为最近帧 hold 语义，故变化
+        帧序列即语义正确且紧凑）。纯只读格式逆向互操作，不触碰授权。
+        """
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from .oss_bridge import import_oss_programs
+        proj = self._ensure_project_program_fields()
+        if proj is None:
+            QMessageBox.information(self, "导入 DEPENCE 录制流", "请先新建或打开一个项目。")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "导入 DEPENCE 录制流", "",
+            "DEPENCE 录制流 (*.oss *.depence);;所有文件 (*.*)")
+        if not path:
+            return
+        keys = self._discover_depence_keys(path)  # .oss 直读时返回 None，不影响
+        try:
+            programs, warnings = import_oss_programs(path, keys)
+        except Exception as e:  # 损坏档/意外格式 → 提示而非崩溃
+            QMessageBox.critical(self, "导入 DEPENCE 录制流", f"导入失败：{e}")
+            return
+        if not programs:
+            note = "\n".join(warnings[:8]) if warnings else "文件中无可导入的录制流。"
+            QMessageBox.warning(self, "导入 DEPENCE 录制流", "未导入任何录制流。\n" + note)
+            return
+        self._snapshot_for_undo()
+        self._save_current_timeline_to_program()
+        added = []
+        for program in programs:
+            program.name = self._unique_program_name(program.name)
+            proj.programs.append(program)
+            added.append(program)
+        # 打开第一个新导入节目到时间线
+        first = added[0]
+        self._load_program_to_timeline(first.id, save_current=False)
+        self._refresh_program_list()
+        self.mark_dirty()
+        total_clips = sum(len(t.clips) for p in added for t in p.tracks)
+        msg = (f"已导入 {len(added)} 个录制流节目（共 {total_clips} 个片段），"
+               f"已打开第一个：\"{first.name}\"。\n"
+               f"可在节目管理面板切换其余节目，并在时间线二次编排。")
+        if warnings:
+            msg += "\n\n提示：\n" + "\n".join(warnings[:6])
+        QMessageBox.information(self, "导入 DEPENCE 录制流", msg)
+
+    def _import_depence_cfo(self):
+        """导入 DEPENCE 效果库 (.cfo/.depence) → 轨迹曲线 + 波形。
+
+        DEPENCE .cfo 的三类原语映射到 Qascade：
+          TFXPathXY   → TrajectoryCurve（写入轨迹仓库，随工程保存，可在轨迹面板用）
+          TFXWave     → 波形 LUT（注入 effect_engine.WAVE_FUNCS，效果可选用，名前缀 Cfo）
+          TFXColorGardient → 报告数量（色标数据已解出，供后续调色板消费）
+        加密工程需已恢复的内部密钥（见 _discover_depence_keys）。
+        """
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from .map_cfo import (read_cfo_from_depence, build_trajectory_curve,
+                              waves_to_wave_funcs)
+        path, _ = QFileDialog.getOpenFileName(
+            self, "导入 DEPENCE 效果库", "",
+            "DEPENCE 效果库 (*.cfo *.depence);;所有文件 (*.*)")
+        if not path:
+            return
+        keys = self._discover_depence_keys(path)
+        try:
+            lib, warnings = read_cfo_from_depence(path, keys)
+        except Exception as e:
+            QMessageBox.critical(self, "导入 DEPENCE 效果库", f"导入失败：{e}")
+            return
+        if lib is None or lib.total == 0:
+            note = "\n".join(warnings[:8]) if warnings else "未发现可导入的效果原语。"
+            QMessageBox.warning(self, "导入 DEPENCE 效果库", "未导入任何效果。\n" + note)
+            return
+        # 1) 路径 → 轨迹曲线仓库（真实写入、随工程序列化）
+        from .trajectory_curve import get_trajectory_curve_store
+        store = get_trajectory_curve_store()
+        n_paths = 0
+        for p in lib.paths:
+            store.add(build_trajectory_curve(p, name=f"Cfo:{p.name}"))
+            n_paths += 1
+        # 2) 波形 → WAVE_FUNCS（效果引擎的波形选择表），并重注册波形效果预设
+        from . import effect_engine as _ee
+        new_funcs = waves_to_wave_funcs(lib.waves)
+        _ee.WAVE_FUNCS.update(new_funcs)
+        try:
+            eng = _ee.get_engine()
+            if hasattr(eng, "_register_wave_presets"):
+                eng._register_wave_presets()  # 让新波形成为可选效果
+        except Exception:
+            log.exception("重注册波形效果预设失败（波形已入 WAVE_FUNCS，可手动选用）")
+        self.mark_dirty()
+        msg = (f"已导入 DEPENCE 效果库：\n"
+               f"  • {n_paths} 条运动路径 → 轨迹曲线（前缀 Cfo:，见轨迹面板）\n"
+               f"  • {len(new_funcs)} 个波形 → 效果波形表（前缀 Cfo）\n"
+               f"  • {len(lib.gradients)} 个颜色渐变已解出")
+        if warnings:
+            msg += "\n\n提示：\n" + "\n".join(warnings[:6])
+        QMessageBox.information(self, "导入 DEPENCE 效果库", msg)
+
     def _import_patch_table(self):
-        """导入 R4 配接表 — 第 1 步：解析 CSV、建设备类型、打开 Patch 面板待补通道。"""
+        """导入 DEPENCE R4 配接表 — 第 1 步：解析 CSV、建设备类型、打开 Patch 面板待补通道。"""
         from PyQt6.QtWidgets import QFileDialog, QMessageBox
         from .import_patch_csv import read_patch_csv, group_by_type, skipped_container_types
         from ..core.models import FixtureDefinition
@@ -9668,7 +10076,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "导入配接表", "请先新建或打开一个项目。")
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, "导入配接表 (R4 CSV)", "", "CSV 文件 (*.csv);;所有文件 (*.*)")
+            self, "导入配接表 (DEPENCE R4 CSV)", "", "CSV 文件 (*.csv);;所有文件 (*.*)")
         if not path:
             return
         rows, warnings = self._import_busy("正在解析配接表…", lambda: read_patch_csv(path))
@@ -9727,7 +10135,7 @@ class MainWindow(QMainWindow):
             self._patch_widget.open_placeholder_editors(list(def_by_type.values()))
 
     def _finalize_patch_import(self):
-        """导入配接表 — 第 2 步：建设备实例 + 生成 TopView 各类型 Sheet。"""
+        """导入 DEPENCE R4 配接表 — 第 2 步：建设备实例 + 生成 TopView 各类型 Sheet。"""
         from PyQt6.QtWidgets import QMessageBox
         from ..core.models import FixtureInstance
         from .import_patch_csv import build_type_layout
@@ -9735,7 +10143,6 @@ class MainWindow(QMainWindow):
         ctx = self._pending_patch_import
         if not ctx:
             return
-        guid_to_key = ctx.get("guid_to_key") or {}
         proj = self._project()
         if proj is None:
             self._pending_patch_import = None
@@ -9805,11 +10212,11 @@ class MainWindow(QMainWindow):
         seq_to_fid = {}; created = 0
         new_fids = set()   # 本次导入新建的 fid（再次导入时只对新设备写坐标，保留旧设备的人工摆位/缩放）
         skipped_groups = []
-        # ★ 真实安装朝向表（2026-08-09）：_extra=(sel, fmap, patched, guid_to_key)。
-        #   guid_to_key 值实为 PatchRow 对象（import_ L736 guid_to_key[fg]=row，
+        # ★ 真实安装朝向表（2026-08-09）：depence_extra=(sel, fmap, patched, guid_to_key)。
+        #   guid_to_key 值实为 PatchRow 对象（import_depence L736 guid_to_key[fg]=row，
         #   注释写 (type_name, seq_id) 是旧版残留）→ 取 .type_name/.seq_id 构造键，
-        #   反查 guid → fmap[guid].rot_y（世界偏航，2D XY 同步基准用）。
-        _extra = ctx.get("_extra"); _fmap = _extra[1] if _extra else None
+        #   反查 guid → fmap[guid].rot_y（DEPENCE 世界偏航，2D XY 同步基准用）。
+        _extra = ctx.get("depence_extra"); _fmap = _extra[1] if _extra else None
         _key_to_guid = {}
         if _fmap:
             for _g, _k in (_extra[3] or {}).items():
@@ -9834,15 +10241,15 @@ class MainWindow(QMainWindow):
                 fi = FixtureInstance(
                     def_id=did, name=f"{g.type_name} {row.seq_id}",
                     universe=int(row.universe), start_channel=int(row.start_channel))
-                fi.pos_z = float(getattr(row, "y_cm", 0.0) or 0.0)  # 高度(PosY)
-                # 安装绕 X 轴旋转（Object RotX）：RotX=180 设备的
+                fi.pos_z = float(getattr(row, "y_cm", 0.0) or 0.0)  # 高度(DEPENCE PosY)
+                # 安装绕 X 轴旋转（DEPENCE Object RotX）：RotX=180 设备的
                 # 翻转门控 = RotZ（见 topview_panel._fixture_is_flipped）：
                 # RotZ=180 是纯偏航（改版至冬1，同步零翻转）；
                 # RotZ=-180 才是至冬7.0 式倒装约定（同步基准 +180）。
                 fi.rot_x = float(getattr(row, "x_rot_deg", 0.0) or 0.0)
-                # 安装绕 Z 轴旋转（Object RotZ，翻转门控依据）。
+                # 安装绕 Z 轴旋转（DEPENCE Object RotZ，翻转门控依据）。
                 fi.rot_z = float(getattr(row, "z_rot_deg", 0.0) or 0.0)
-                # 安装绕 Y 轴旋转（世界偏航）：fmap 反查真实朝向。
+                # 安装绕 Y 轴旋转（DEPENCE 世界偏航）：fmap 反查真实朝向。
                 #   仅导入路径有 fmap；手动配接/CSV 无 → 0.0 回退切线基准。
                 fi.rot_y = 0.0
                 if _fmap:
@@ -9859,13 +10266,178 @@ class MainWindow(QMainWindow):
                 seq_to_fid[(g.type_name, row.seq_id)] = fi.id
                 new_fids.add(fi.id)
                 created += 1
-        fix_by_id = {fixture.id: fixture for fixture in proj.fixtures}
+        fix_by_id, dep_extra = prepare_imported_fixture_context(proj.fixtures, ctx, seq_to_fid)
         # 生成 TopView：每类型一个 Sheet（摆位 + 按簇拟合图形，不写朝向）
         pages_added = 0; logical_devices_dicts = []
         self._toggle_dock(self._topview_dock, True)
         topview_ok = (self._topview_widget is not None
                       and hasattr(self._topview_widget, "import_layout_pages"))
-        if topview_ok:
+        if (dep_extra and dep_extra[0] is not None and dep_extra[0].groups
+                and topview_ok):
+            # ── 选择组模式：DEPENCE 文件夹一页 + 包折叠 + Programmer 选择组 ──
+            from .depence_groups import (PackageResolver, assemble_page,
+                                         build_folder_page_specs, build_package_lds)
+            from .import_patch_csv import (DEFAULT_IMPORT_SCALE,
+                                           fit_shapes_for_points)
+            sel, fmap, patched_guids, guid_to_key = dep_extra
+            # ★ DEPENCE 样条（用户画的弧线/折线）→ 工程 proj.splines（独立字段，
+            #   不被 topview_state 的 save_state 覆盖）：同步基准优先用其切向角
+            #   （用户建议双管齐下；弧线按页设备范围匹配，不乱传）。
+            try:
+                import zipfile as _zipfile
+                import xml.etree.ElementTree as _ET
+                from .depence_groups import parse_splines as _parse_splines
+                from .import_depence import _is_full_xml_tree
+                _splines = None; _root = ctx.get("project_root")
+                # ★ 性能（2026-08-04）：复用 ext 已解析的完整树，不再整档重解析
+                #   （至冬7.0 全量 ET 解析 ~7s）。CE 剪枝树（QASCADE_CE_XML=1）
+                #   缺 Points 等标签 → 回退原整档重解析（现状行为）。
+                if _root is not None and _is_full_xml_tree(_root):
+                    _scan = ctx.get("project_scan"); _splines = _parse_splines(
+                        _root, spline_els=_scan.spline_objs if _scan else None)
+                else:
+                    _src = ctx.get("src") or ""
+                    if _src and os.path.exists(_src):
+                        with _zipfile.ZipFile(_src) as _z:
+                            with _z.open("project.xml") as _f:
+                                _root = _ET.parse(_f).getroot()
+                        _splines = _parse_splines(_root)
+                if _splines:
+                    proj.splines = _splines
+            except Exception as _e:
+                import logging
+                logging.getLogger(__name__).warning("DEPENCE 样条解析失败: %s", _e)
+            # 整套设备根 = 选择组项的最顶层 TFixture 祖先（DEPENCE fixture 页面顶层）
+            try:
+                # ★ 2026-08-13 IMP-03: 主段异常保护 —— 解析异常不再穿透 Qt
+                # 槽致半导入(设备已 append 而页面/组未建); 异常时保留已配接
+                # 设备、跳过 TopView 摆位, 与样条/拆分子块同款兜底风格。
+                item_guids = {it.fixture_guid for g in sel.groups for it in g.items}
+                resolver = PackageResolver(fmap, set(patched_guids), item_guids)
+                # Fixture GUID → fid（row.type_name 已含同名字段消歧）
+                guid_to_fid = {}
+                for guid, row in guid_to_key.items():
+                    fid = seq_to_fid.get((row.type_name, row.seq_id))
+                    if fid:
+                        guid_to_fid[guid] = fid
+                page_specs, package_lds, group_members, covered, pos_map = \
+                    build_folder_page_specs(sel, resolver, fmap, guid_to_fid,
+                                            DEFAULT_IMPORT_SCALE, fit_shapes_for_points,
+                                            splines=list(getattr(proj, "splines", []) or []))
+                # 未入任何文件夹的设备 → 「未分组」页（含散台/包，与文件夹页同规则）
+                ungrouped = [g for g in patched_guids
+                             if g not in covered and g in guid_to_fid]
+                _add_ungrouped_pages(
+                    ungrouped, (page_specs, package_lds, pos_map),
+                    (resolver, fmap, guid_to_fid, fit_shapes_for_points))
+                # 世界坐标写入实例（包内子设备由局部坐标变换而来；只写本次新建）
+                for fid, (x, y) in pos_map.items():
+                    fi = fix_by_id.get(fid)
+                    if fi is not None and fid in new_fids:
+                        fi.pos_x = float(x); fi.pos_y = float(y)
+                # ★ 设备真实世界坐标（场地坐标，沿父链变换）：同步基准角度/样条投影
+                #   需要设备在弧线上的真实安装位置（局部/画布坐标受包 RotY 旋转影响）。
+                from .depence_groups import world_xy as _world_xy
+                for guid, fid in guid_to_fid.items():
+                    fi = fix_by_id.get(fid)
+                    if fi is None:
+                        continue
+                    wx, wz = _world_xy(guid, fmap)
+                    fi.world_x = float(wx)
+                    fi.world_z = float(wz)
+                # 工程逻辑设备：包代表点（替换本次导入涉及设备的旧条目）
+                import_pool = set(guid_to_fid.values())
+                proj.logical_devices = [ld for ld in (proj.logical_devices or [])
+                                        if not ({str(m) for m in ld.get("member_fixture_ids", [])} & import_pool)]
+                proj.logical_devices.extend(package_lds)
+                logical_devices_dicts = package_lds
+                # ── 混合页子页拆分(2026-08-04 用户): 包 + 散台(泵)同页 → 拆子页 ──
+                # 实测: 底弧线/上弧线/落叶头/百变 页, 每台 单通道水泵 与包代表点/
+                # 成员世界坐标 100% 重合 → 鼠标命中先查代表点(_logical_device_at)再查
+                # 设备(_fixture_at), 泵永远选不到、单选/框选/高亮全混淆。
+                # 拆为「原页(包)」+「原页·泵(散台)」两页, 结构上消除重合歧义,
+                # 子页名可辨识, 其余页(纯包/纯散台)不受影响。
+                try:
+                    split_specs = []
+                    for _spec in page_specs:
+                        _lds = _spec.get("logical_devices") or []
+                        if not _lds:
+                            split_specs.append(_spec)
+                            continue
+                        _members = {str(m) for _ld in _lds
+                                    for m in (_ld.get("member_fixture_ids") or [])}
+                        _fx = _spec.get("fixtures") or {}
+                        _standalone = [str(f) for f in _fx.keys() if str(f) not in _members]
+                        if not _standalone:
+                            split_specs.append(_spec)
+                            continue
+                        _sub = {"name": "%s·散台" % str(_spec.get("name", "") or ""),
+                                "fixtures": {f: _fx[f] for f in _fx if str(f) in _standalone},
+                                "shapes": [], "logical_devices": []}
+                        _spec["fixtures"] = {f: _fx[f] for f in _fx if str(f) not in _standalone}
+                        split_specs.append(_spec)
+                        split_specs.append(_sub)
+                    page_specs = split_specs
+                except Exception:
+                    import logging
+                    logging.getLogger(__name__).warning("DEPENCE 混合页子页拆分失败")
+                pages_added = self._topview_widget.import_layout_pages(page_specs)
+                # 每页自动「全选」组（与按类型导入一致；组名=页名 全选）
+                try:
+                    page_groups = []
+                    for spec in page_specs:
+                        pname = str(spec.get("name", "") or "")
+                        page_fids = [str(f) for f in (spec.get("fixtures", {}) or {}).keys()]
+                        for ld in (spec.get("logical_devices", []) or []):
+                            for m in (ld.get("member_fixture_ids", []) or []):
+                                page_fids.append(str(m))
+                        seen = set(); ordered = []
+                        for f in page_fids:
+                            if f and f not in seen:
+                                seen.add(f); ordered.append(f)
+                        if ordered:
+                            page_groups.append((f"{pname} 全选", ordered))
+                    if page_groups:
+                        page_names = {n for n, _ in page_groups}
+                        pg_existing = [g for g in (proj.fixture_groups or [])
+                                       if str((g.get("name", "") if isinstance(g, dict) else "")) not in page_names]
+                        for gname, gfids in page_groups:
+                            pg_existing.append({
+                                "id": str(uuid.uuid4()), "name": gname, "color": "#3A6EA5",
+                                "fixture_ids": list(gfids),
+                                "base_order_fixture_ids": list(gfids),
+                                "route_order_sheets": []})
+                        proj.fixture_groups = pg_existing
+                except Exception:
+                    import logging
+                    logging.getLogger(__name__).warning("DEPENCE 文件夹页全选组创建失败")
+                # Programmer 选择组 = DEPENCE 选择组（重名加文件夹前缀，成员=展开到配接设备）
+                names = set()
+                dep_groups = []
+                for folder_name, gname, fids in group_members:
+                    disp = gname
+                    if disp in names:
+                        disp = f"{folder_name}·{gname}"
+                    names.add(disp)
+                    dep_groups.append({
+                        "id": str(uuid.uuid4()), "name": disp, "color": "#3A6EA5",
+                        "fixture_ids": list(fids),
+                        "base_order_fixture_ids": list(fids),
+                        "route_order_sheets": []})
+                existing_groups = [g for g in (proj.fixture_groups or [])
+                                   if str((g.get("name", "") if isinstance(g, dict) else "")) not in names]
+                existing_groups.extend(dep_groups)
+                proj.fixture_groups = existing_groups; skipped_groups = []
+            except Exception as _e:
+                import logging
+                logging.getLogger(__name__).exception(
+                    "DEPENCE 分组/摆位解析失败")
+                QMessageBox.critical(
+                    self, "导入完成（部分）",
+                    "设备已配接，但分组/页面摆位解析失败，已跳过："
+                    + str(_e))
+                skipped_groups = []
+        elif topview_ok:
             from .import_patch_csv import DEFAULT_IMPORT_SCALE
             from .composite_device_dialog import CompositeDeviceDialog
             from ..core.models import LogicalDevice
@@ -10668,7 +11240,11 @@ class MainWindow(QMainWindow):
         """帮助 ▸ 使用教程 / 说明书：打开内置教程面板（默认软件说明书）。"""
         self._show_tutorial_tab(0)
 
-    def _show_tutorial_tab(self, prefer_index: int = 0):
+    def _open_depence_docs(self):
+        """帮助 ▸ DEPENCE R4 官方文档：打开内置离线文档（缺失则回落在线）。"""
+        self._show_tutorial_tab(1)
+
+    def _show_tutorial_tab(self, prefer_index: int):
         dock = getattr(self, "_tutorial_dock", None)
         if dock is None:
             return
@@ -10678,7 +11254,15 @@ class MainWindow(QMainWindow):
         if w is None:
             return
         try:
-            w.open_manual()
+            from .tutorial_panel import content_path, _DEPENCE_SUBDIR
+            if prefer_index == 1 and not content_path(_DEPENCE_SUBDIR, "index.html"):
+                # 本地缺文档：打开官方在线文档兜底（仍不崩）
+                w.show_remote("https://help.depence.com/")
+                return
+            if prefer_index == 0:
+                w.open_manual()
+            else:
+                w.open_depence_docs(prefer_index)
         except Exception:
             import logging
             logging.getLogger(__name__).warning("打开教程页失败", exc_info=True)
@@ -11023,7 +11607,15 @@ class MainWindow(QMainWindow):
         self._auto_save_timer.stop()
         dispose_audio_workspace(self)
         from .window_shutdown import shutdown_window_workers
-        shutdown_window_workers(self)
+        try:
+            shutdown_window_workers(self)
+        except Exception as error:
+            # Keep the actual owner/window available for retirement retry rather
+            # than let an exception escape through Qt's closeEvent callback.
+            event.ignore()
+            log.exception("Window worker retirement failed; resources retained for retry")
+            self._status.set_message("后台资源未能完整退出，请重试关闭：" + str(error)[:192])
+            return
         if self._nm and hasattr(self._nm, "stop"):
             self._nm.stop()
             self._status.clear_timecode()
@@ -11195,6 +11787,46 @@ def _xy_info(win, msg: str) -> None:
         pass
 
 
+def _add_ungrouped_pages(ungrouped, out, ctx) -> None:
+    """未入文件夹的设备 → 按**设备类型**细化拆页（R128；与文件夹页同规则）。
+
+    `out` = (page_specs, package_lds, pos_map)；`ctx` = (resolver, fmap,
+    guid_to_fid, fit_shapes_fn)。
+    """
+    if not ungrouped:
+        return
+    page_specs, package_lds, pos_map = out
+    resolver, fmap, guid_to_fid, fit_shapes_fn = ctx
+    # ★★ R131 修复（**R128 自引入的 P0**）：`build_package_lds` / `assemble_page`
+    #   定义在 `depence_groups`，**不在** `import_patch_csv` —— 原先从后者导入 →
+    #   ImportError 被 `_finalize_patch_import` 的整段 try 吞掉，而**所有**摆位/写工程
+    #   动作都在本函数调用**之后**（pos_x/pos_y、logical_devices、import_layout_pages、
+    #   fixture_groups 全被跳过）→ 用户导入带选择组的 DEPENCE 工程后拿到"设备已配接，
+    #   但分组/页面摆位解析失败"红框 + TopView 空页 + 全部设备叠在 (0,0)。
+    #   触发条件：`sel.groups` 非空 **且** 有未进文件夹的设备（全部在文件夹里时不触发，
+    #   所以静态复核容易漏）。同文件 9441 那处 import 一直是写对的。
+    from .depence_groups import _refine_subpages_by_type, assemble_page, build_package_lds
+    from .import_patch_csv import DEFAULT_IMPORT_SCALE
+    for uname, umems in _refine_subpages_by_type([("未分组", ungrouped)], "未分组", fmap):
+        lds, pkg_to_ld = build_package_lds(umems, resolver, fmap, guid_to_fid,
+                                           DEFAULT_IMPORT_SCALE)
+        package_lds.extend(lds)
+        spec = assemble_page(uname, umems, resolver, fmap, guid_to_fid,
+                             DEFAULT_IMPORT_SCALE, fit_shapes_fn, pkg_to_ld)
+        if spec is not None:
+            page_specs.append(spec)
+            _absorb_page_positions(spec, pos_map)
+
+
+def _absorb_page_positions(spec, pos_map) -> None:
+    """把一页的设备/包成员坐标并入 pos_map（与文件夹页同式）。"""
+    for fid, (x, y) in (spec.get("fixtures", {}) or {}).items():
+        pos_map[str(fid)] = (float(x), float(y))
+    for ld in (spec.get("logical_devices", []) or []):
+        for m in ld.get("member_fixture_ids", []):
+            off = (ld.get("local_offsets", {}) or {}).get(str(m), [0.0, 0.0])
+            pos_map[str(m)] = (float(ld.get("pos_x", 0.0)) + float(off[0]),
+                               float(ld.get("pos_y", 0.0)) + float(off[1]))
 
 
 def _ld_channel_types(proj, fix_by_id) -> dict:
@@ -11260,70 +11892,6 @@ def _xy_gimbal_entry(ctx, guid_pair, index: int):
         merge_group=f"XY云台·{rx}").to_dict()
 
 
-
-def _at(el, key: str):
-    """元素属性快捷读取（缺失/无值返回 None）。"""
-    v = el.get(key)
-    return v if (v is not None and str(v).strip() != "") else None
-
-
-def _ancestor_guids(guid: str, objs, max_depth: int = 16):
-    """沿 ParentObjectGUID 向上收集祖先 GUID（不含自身；防环/防越界）。"""
-    out = []
-    seen = {str(guid)}
-    cur = str(guid)
-    for _ in range(max_depth):
-        el = objs.get(cur)
-        if el is None:
-            break
-        p = (_at(el, "ParentObjectGUID") or "").strip()
-        if not p or p in seen or p.startswith("00000000"):
-            break
-        out.append(p)
-        seen.add(p)
-        cur = p
-    return out
-
-
-def _split_single_axis_guids(chan_by_fid):
-    """把设备分成「只含 X 轴」与「只含 Y 轴」两组 fid（只看物理通道）。"""
-    has_x = {str(f) for f, ch in (chan_by_fid or {}).items() if "motor_x" in ch}
-    has_y = {str(f) for f, ch in (chan_by_fid or {}).items() if "motor_y" in ch}
-    return has_x - has_y, has_y - has_x
-
-
-def _pair_x_ancestor(y_guid: str, objs, x_only_guids: set):
-    """Y 设备 → (其 X 轴祖先 guid, Y guid)；无祖先返回 None。"""
-    if not y_guid:
-        return None
-    hit = next((a for a in _ancestor_guids(y_guid, objs) if a in x_only_guids), None)
-    return (hit, y_guid) if hit is not None else None
-
-
-def detect_xy_axis_pairs(guid_to_key, chan_by_fid, objs):
-    """检测「父设备管 X + 嵌套子设备管 Y」的二维云台配对（用户 2026-09-21 定案）。
-
-    判定条件（**两条同时满足**才配对，避免误拟合无关设备）：
-      ① Y 设备是 X 设备的**后代**（沿 ParentObjectGUID 向上可达）；
-      ② X 设备含 motor_x 且**不含** motor_y；Y 设备含 motor_y 且**不含** motor_x。
-    其余情形（同名但不嵌套、互为兄弟、单轴设备无配对）一概不拟合。
-
-    返回 [(x_guid, y_guid), ...]。
-    """
-    x_only, y_only = _split_single_axis_guids(chan_by_fid)
-    if not x_only or not y_only:
-        return []
-    guid_by_fid = {}
-    for g, row in (guid_to_key or {}).items():
-        rfid = str(getattr(row, "id", "") or "")
-        if rfid:
-            guid_by_fid.setdefault(rfid, str(g))
-    x_only_guids = {guid_by_fid[f] for f in x_only if f in guid_by_fid}
-    return [pr for yf in sorted(y_only)
-            for pr in (_pair_x_ancestor(guid_by_fid.get(yf, ""), objs, x_only_guids),)
-            if pr is not None]
-
-
 def _build_xy_gimbal_devices(ctx, project_root, chan_by_fid):
     """识别二维云台并合成组合设备（R127；返回 (逻辑设备 dict 列表, 提示文案)）。
 
@@ -11346,9 +11914,8 @@ def _build_xy_gimbal_devices(ctx, project_root, chan_by_fid):
     只有 X 且无嵌套 Y 后代）零误配。
     """
     guid_to_key, seq_to_fid, fix_by_id, composite_lds = ctx
-    if not guid_to_key or project_root is None:
-        return [], ""
     try:
+        from .import_depence import detect_xy_axis_pairs
         pairs = detect_xy_axis_pairs(
             guid_to_key, chan_by_fid, _collect_objects_by_guid(project_root))
         consumed = {str(m) for ld in (composite_lds or [])

@@ -54,22 +54,35 @@ def _class_current(owner, previous):
 
 
 def _extra_original(owner):
-    from qascade_ce.native_curve_scalar_guard import _signature
     for name, wanted in _EXTRA.items():
         function = inspect.getattr_static(owner, name)
         if type(function) is not FunctionType:
             return False
         if name == "_render_position" and not _render_wrapper_original(function):
             return False
-        if name == "_get_fade_out_target" and hasattr(function, "__wrapped__"):
-            from qascade_ce.native_fade_target_install import wrapper_current
-            if not wrapper_current(function, owner):
-                return False
+        if not _owned_extra_original(name, function, owner):
+            return False
         function = getattr(function, "__wrapped__", function)
-        if type(function) is not FunctionType or function.__globals__ is not vars(sys.modules[owner.__module__]):
+        if not _public_extra_original(function, owner, wanted):
+            if name == '_render_position':
+                from .timeline_sntc_source_guard import successor_render_source
+                if successor_render_source(function, owner):
+                    continue
             return False
-        if hashlib.sha256(repr(_signature(function.__code__)).encode()).hexdigest() != wanted:
-            return False
+    return True
+
+
+def _public_extra_original(function, owner, wanted):
+    from qascade_ce.native_curve_scalar_guard import _signature
+    return (type(function) is FunctionType
+            and function.__globals__ is vars(sys.modules[owner.__module__])
+            and hashlib.sha256(repr(_signature(function.__code__)).encode()).hexdigest() == wanted)
+
+
+def _owned_extra_original(name, function, owner):
+    if name == "_get_fade_out_target" and hasattr(function, "__wrapped__"):
+        from qascade_ce.native_fade_target_install import wrapper_current
+        return wrapper_current(function, owner)
     return True
 
 
@@ -93,6 +106,11 @@ def _initial_scope(engine):
     members = [value.__func__ if isinstance(value, staticmethod) else value for _, value in class_rows]
     members.extend((render_path.ce_indexed_active_clip_items, *installed._ORIGINALS.values()))
     metadata, seen = [], set()
+    from .timeline_sntc_source_guard import successor_render_rows
+    successor = successor_render_rows()
+    if successor is None:
+        return None
+    metadata.extend(successor)
     for function in members:
         metadata.extend(_function_tree(function, seen))
     dependencies = [(vars(render_path), "ce_indexed_active_clip_items", render_path.ce_indexed_active_clip_items)]
@@ -105,7 +123,6 @@ def _metadata_current(rows):
 
 
 def default_live_scope(engine):
-    from .transition_anchor_causality import default_scope
     from qascade_ce import native_playback_index_install as installed
     global _QUALIFIED
     if _QUALIFIED is None:
@@ -117,6 +134,11 @@ def default_live_scope(engine):
         return False
     if not _class_current(type(engine), class_rows) or tuple(installed._ORIGINALS) != original_keys:
         return False
+    return _live_sources_current(engine, metadata)
+
+
+def _live_sources_current(engine, metadata):
+    from .transition_anchor_causality import default_scope
     function = inspect.getattr_static(type(engine), "_get_fade_out_target")
     if hasattr(function, "__wrapped__"):
         from qascade_ce.native_fade_target_install import wrapper_current

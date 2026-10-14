@@ -14,7 +14,7 @@ from . import timeline_ruler_paint as _paint
 
 _HANDLE_HIT = 8
 DEFAULT_RULER_SECONDS = 600.0
-#: ★ R183 T3：每拍至少这么宽才画拍线（小节标尺同款分级：太密只画小节线）。
+#: ★ R183 T3：每拍至少这么宽才画拍线（Ableton 小节标尺同款分级：太密只画小节线）。
 MIN_PX_PER_BEAT = 8.0
 #: 小节线也糊了（间隔小于本值）→ 整层不画，交由秒刻度兜底。
 _MIN_BAR_PX = 12.0
@@ -121,7 +121,7 @@ class TimelineRuler(QWidget):
         """命中标记：返回 `(下标, 标记 dict)`；未命中 → `(None, None)`。
 
         先按"标记竖线"精确命中（±tol px），再退化为"色条范围"命中 —— 长条标记
-        （文字长、色条宽）在条内任意位置都算命中，与既有实现 的"拖条即拖标记"一致。
+        （文字长、色条宽）在条内任意位置都算命中，与 Depence 的"拖条即拖标记"一致。
         """
         if not self._markers:
             return None, None
@@ -250,6 +250,13 @@ class TimelineRuler(QWidget):
         return "seek"
 
     def _press_apply(self, target: str, x: float) -> None:
+        from .timeline_sntc_control import perform_pointer
+        if target in ('seek', 'playhead'):
+            perform_pointer(self, self._press_apply_local, target, x)
+            return
+        self._press_apply_local(target, x)
+
+    def _press_apply_local(self, target: str, x: float) -> None:
         """执行按下动作（`_press_target` 的对应实现，一一对应）。"""
         if target == "marker":
             return                    # 起拖已在 `_marker_press` 内完成
@@ -323,6 +330,14 @@ class TimelineRuler(QWidget):
         e.accept()
 
     def _drag_move(self, t: float) -> None:
+        from .timeline_sntc_control import perform_pointer
+        if self._drag == 'playhead':
+            if not perform_pointer(self, self._drag_move_local, t):
+                self._drag = None
+            return
+        self._drag_move_local(t)
+
+    def _drag_move_local(self, t: float) -> None:
         """推进当前拖动手势（播放头 / 循环起止三条；外提压 mouseMoveEvent CC）。"""
         if self._drag == "playhead":
             self._position = t

@@ -1,0 +1,28 @@
+/* Research-only build translation unit. Current ce_engine.c is reused intact.
+ * Compile /fp:precise, same baseline/AVX2 ISA definitions as current CE builds.
+ * There is no loader/install/default route product modification. */
+#include "../../../../../render_lab/csrc/ce_engine.c"
+#include <limits.h>
+#include "r1_types.h"
+#include "r3_types.h"
+#include "r1_alloc.inc"
+#include "r1_validate.inc"
+#include "r1_sort.inc"
+#include "r1_state.inc"
+#include "r1_sparse.inc"
+#include "r1_compile3.inc"
+#include "r1_compile_step.inc"
+#include "r1_block.inc"
+#include "r1_active.inc"
+#include "r1_eval.inc"
+#include "r1_api.inc"
+#include "r3_shape.inc"
+#include "r3_model.inc"
+#include "r3_lt_compile.inc"
+#include "r3_work.inc"
+#include "r3_eval.inc"
+#include "r3_history.inc"
+#include "r3_alloc.inc"
+#include "r3_create.inc"
+#include "r3_compile.inc"
+#include "r3_api.inc"

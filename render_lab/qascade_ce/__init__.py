@@ -36,6 +36,8 @@ _engine = None
 _CE_CONTRACT_REPORT: dict = {}
 # 泵预充电 C 数学调用计数（诊断: >0 = C 路径真实执行, 非静默回退原版）
 _PRECHARGE_CNT = [0]
+# P5-XML 导入 C 路径成功计数（诊断: >0 = 剪枝树路径真实执行, 非静默回退 ET）
+_XML_IMPORT_CNT = [0]
 # 心跳 C 数学段执行计数（诊断: >0 = ce_heartbeat_* 真实执行, 非静默回退原版）
 _HEARTBEAT_CNT = [0]
 # T10 TopView 同步/编组 C 路径调用计数（诊断: >0 = C 路径真实执行, 非静默回退）
@@ -391,7 +393,7 @@ def _hook_direction_fade(engine):
         #   · `_seq_window_and_step`（R152/R158：启用扫掠时单台窗口 = 存储的单组时长）；
         #   · `_sequential_global_gain`（R157：分组窗口已完成淡出时**不再叠整体淡出**）。
         #   旧手抄版漏同步 R157 → C 路径淡出仍是"四组之外又多一个整体大过渡"
-        #   （示例工程 调用级 A/B：C 0.9945 vs Python 1.0，渲染 341 帧 u13-u28 不一致）。
+        #   （TTM 调用级 A/B：C 0.9945 vs Python 1.0，渲染 341 帧 u13-u28 不一致）。
         #   本分支 is_fading_in 恒为 False（淡入已在上方回退原版）→ skip_in=False。
         _stagger, per_group = pe._seq_window_and_step(
             self, clip, single_duration, seq_in=seq_delay_in, seq_out=seq_delay_out,
@@ -2381,10 +2383,10 @@ def _hook_frame_path_p4b(engine):
 
     原替代版 render_path.ce_render_position（连同其内的 P6 批量 / P8 线程池 /
     融合调用）在 R150-R177 期间未跟上 Python `_render_position` 的 10 处语义
-    改动 → 示例工程 实时逐帧 A/B 30 帧数据 + 806 帧活跃掩码与 Python 不一致（全部
+    改动 → TTM 实时逐帧 A/B 30 帧数据 + 806 帧活跃掩码与 Python 不一致（全部
     CE 漂移的唯一来源）。C 未同步 → 按 10.3 回退原版：实时渲染一律走 Python
     `_render_position`（其内 `_mix_clips` 仍经 K0 C 内核）。性能由 R178 掩码
-    帧准备缓存补回（纯 Python 实时 示例工程 65.0s → 38.7s，均值 36.5 → 21.7ms）。
+    帧准备缓存补回（纯 Python 实时 TTM 65.0s → 38.7s，均值 36.5 → 21.7ms）。
     render_path 模块保留：P7 `ce_indexed_active_clip_items` 仍在用；
     ce_render_position 仅供探针对照，C 同步后重新接入须过门1/门2 + 实时 A/B。
     """
@@ -4903,6 +4905,291 @@ def _hook_audio_msa(engine):
              "ce_ring_* 镜像均值 / ce_instrument_scores_f64 乐器批")
 
 
+def _hook_depence_xml(engine):
+    """P5-XML: import_depence._load_project_root → C 扫描 + 剪枝树重建。
+
+    替换「ET 建树 + 属性收集」段（导入主瓶颈, 至冬7.0 实测 ET.fromstring
+    5.8-6.9s）: .depence → project.xml bytes → ce_xml_scan_tags +
+    ce_xml_attrs_flatten → 目标标签剪枝树重建（文档序 + 直接父子关系, 同
+    ce_bench_xml.py）→ 喂给同一批生产解析函数（_parse_project_root /
+    parse_selection_groups / build_fixture_map）, 对象构建语义零改动。
+    回退纪律: zip 打开失败/加密无密钥/扫描失败/空命中/未知实体序列（非 5
+    个命名实体）/结构失败 → 回退原 _load_project_root（字节不变）。
+    真实工程 A/B 逐字段对拍见 render_lab/bench/ce_probe_depence_import_ab.py;
+    门1 (ce_probe_bytehash.py 73d9e1c2) 不漂移。
+    QASCADE_CE_XML=1 才启用本 hook；默认未设 = ET 路径（现状行为, 无回归）。
+    """
+    import zipfile as _z
+    from src.ui import import_depence as _idep
+
+    orig_load = _idep._load_project_root
+    dll = engine.dll
+    # 门控: QASCADE_CE_XML=1 启用（2026-08-14 代码默认对齐矩阵 flip: 生产
+    # 经 _mount_ce 已是 1, 直调 install 路径现同样默认开; A/B 位级一致且 ≥2×）。
+    if os.environ.get("QASCADE_CE_XML", "1") != "1":
+        log.info("[CE] P5-XML 门控关闭 (QASCADE_CE_XML=1 启用)")
+        return
+    if not hasattr(dll, "ce_xml_scan_tags") or not hasattr(
+            dll, "ce_xml_attrs_flatten") or not hasattr(dll, "ce_xml_hit_parents"):
+        log.info("[CE] P5-XML 跳过: DLL 无 ce_xml_scan_tags/"
+                 "ce_xml_attrs_flatten/ce_xml_hit_parents"
+                 "（旧变体 → 保持 ET 路径）")
+        return
+
+    class _HIT(ctypes.Structure):
+        _fields_ = [
+            ("tag_idx", ctypes.c_int32),
+            ("start", ctypes.c_int32),
+            ("span_end", ctypes.c_int32),
+            ("elem_end", ctypes.c_int32),
+        ]
+
+    dll.ce_xml_scan_tags.argtypes = [
+        ctypes.c_char_p, ctypes.c_size_t,
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_int,
+        ctypes.POINTER(_HIT), ctypes.c_int,
+    ]
+    dll.ce_xml_scan_tags.restype = ctypes.c_int
+    dll.ce_xml_attrs_flatten.argtypes = [
+        ctypes.c_char_p, ctypes.c_size_t,
+        ctypes.POINTER(_HIT), ctypes.c_int, ctypes.c_int,
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_int,
+        ctypes.c_char_p, ctypes.c_int64,
+        ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_int),
+    ]
+    dll.ce_xml_attrs_flatten.restype = ctypes.c_int64
+    dll.ce_xml_hit_parents.argtypes = [
+        ctypes.POINTER(_HIT), ctypes.c_int, ctypes.c_size_t,
+        ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_int32),
+    ]
+    dll.ce_xml_hit_parents.restype = None
+    if hasattr(dll, "ce_xml_scan_tags_par"):
+        dll.ce_xml_scan_tags_par.argtypes = [
+            ctypes.c_char_p, ctypes.c_size_t,
+            ctypes.POINTER(ctypes.c_char_p), ctypes.c_int,
+            ctypes.POINTER(_HIT), ctypes.c_int, ctypes.c_int,
+        ]
+        dll.ce_xml_scan_tags_par.restype = ctypes.c_int
+    _HIT_DTYPE = np.dtype([
+        ("tag_idx", "<i4"), ("start", "<i4"),
+        ("span_end", "<i4"), ("elem_end", "<i4"),
+    ])
+
+    # 扫描目标 = 生产解析函数读取的标签/属性全集（同 ce_bench_xml.py）
+    # ★ 2026-08-09 同步 b21b23d/bd80ece: "Sources" 是 Mode 的唯一直接子包装
+    #   (真实工程 Mode→Sources→Source), 生产侧 mode_vers 内容指纹
+    #   (for s in m if _ln(s.tag)=="Sources") 依赖它区分同 GUID Mode 变体,
+    #   多数一致版本胜出。缺扫时剪枝树 Mode 直挂 Source, 指纹恒空 → 变体
+    #   坍缩为"首份生效", 残留版可能胜出 — 与 ET 路径逐台不一致。
+    _TAGS = ["Mode", "Sources", "Source", "Feature", "ControlData",
+             "Object", "Patch", "Items", "x", "Group", "ITEMS", "X", "Quaternion"]
+    _TAG_ATTRS = {
+        "Mode": ["GUID"],
+        "Sources": [],
+        "Source": ["Name", "Slot1", "Slot2", "SlotType",
+                   "IsVirtualSource", "SubFixtureID", "Parameter"],
+        "Feature": ["TypeName", "Text", "Minimum_Value", "Maximum_Value"],
+        "ControlData": ["DMXHomeValue", "Priority"],
+        "Object": ["GUID", "TypeName", "Name", "ParentObjectGUID",
+                   "PosX", "PosY", "PosZ", "RotX", "RotY", "RotZ",
+                   "MinAngle", "MaxAngle", "SpecifiedObjectGUID",
+                   "LinkedGUID", "SplineMode", "InvertDirection",
+                   "PointCount", "InnerRadius", "OuterRadius", "Twist",
+                   "Axis", "Radius", "RadiusY", "NumPoints"],
+        # PatchName 供 import_depence.py「仅 Default Patch 导入」(74c9cf1,
+        # 2026-08-11 用户定案)判定用 — 缺失时 patch_names 恒 {""} →
+        # use_all_patches 恒 True, 用户要求剔除的调整配接/雾森行被重新导入
+        # (PAR-4)。Items 是容器元素自身无属性, 保持空即可。
+        "Patch": ["PatchName"],
+        "Items": [],
+        "x": ["FixtureGUID", "ModeGUID", "IsPatched", "dmxLine", "dmxChan"],
+        "Group": ["TypeName", "GUID", "ParentGUID", "Name", "Order"],
+        "ITEMS": [],
+        "X": ["FixtureGUID", "SubFixtureID", "SelectionIndex"],
+        "Quaternion": ["qX", "qY", "qZ", "qW"],
+    }
+
+    def _scan_hits(data):
+        """ce_xml_scan_tags(_par) → (ctypes 命中数组, 命中数)（容量不足翻倍）。
+
+        par 版存在时优先: 字节流分区 + 事件两阶段, 输出与串行版逐字段
+        一致 (等价探针 bench/ce_probe_scan_par.py: 真实工程 + 畸形样本
+        2/4/16 线程全 PASS); 线程数 = CPU 核数, 小文件内部委托串行。
+        返回原始 ctypes 数组 (不再转 Python 列表): attrs/rebuild 段经
+        numpy frombuffer 零拷贝读列, 消除 34 万次 ctypes 对象转换。
+        """
+        tags_arr = (ctypes.c_char_p * len(_TAGS))(*[t.encode() for t in _TAGS])
+        par = getattr(dll, "ce_xml_scan_tags_par", None)
+        cap = 400_000
+        while True:
+            out = (_HIT * cap)()
+            if par is not None:
+                n = par(data, len(data), tags_arr, len(_TAGS), out, cap,
+                        os.cpu_count() or 0)
+            else:
+                n = dll.ce_xml_scan_tags(data, len(data), tags_arr,
+                                         len(_TAGS), out, cap)
+            if n >= 0:
+                return out, n
+            if n == -1:
+                cap *= 2
+                continue
+            raise RuntimeError(f"ce_xml_scan_tags 栈溢出 (n={n})")
+
+    def _extract_attrs_flatten(data, hits_np, hits_buf, n_hits, tag_idx,
+                               pos, anames):
+        """ce_xml_attrs_flatten → 每命中属性 dict（稀疏装配, 整体一次 decode）。
+
+        与旧 attrs_batch 平铺循环 (bench/ce_probe_xml_attr_prof S1+S3+S4
+        合计 ~2.0s) 的差异:
+          - C 侧按 tag_idx 过滤命中并直接输出值扁平缓冲 (内部实体反义 +
+            空白归一化, expat 语义), Python 侧不再逐命中建 _SPAN / 不再
+            bytes(recs) 全拷贝 / 不再逐值 decode — 扁平缓冲整体 decode
+            一次, 按 C 输出的字符偏移切片 (含 CJK 值不位错)
+          - 缺失属性 (占 Object 组 69%) 走 numpy 稀疏装配, 不进入
+            Python 循环
+          - 未知实体序列 → None（调用方回退原版, 字节不变）
+        """
+        n = len(anames)
+        m = len(pos)
+        attr_arr = (ctypes.c_char_p * n)(*[a.encode() for a in anames])
+        cap = int((hits_np["span_end"][pos] - hits_np["start"][pos]).sum())
+        flat = ctypes.create_string_buffer(max(cap, 1))
+        idx = (ctypes.c_int32 * (m * n * 4))()
+        uk = ctypes.c_int(0)
+        total = dll.ce_xml_attrs_flatten(
+            data, len(data), hits_buf, n_hits, tag_idx,
+            attr_arr, n, flat, cap, idx, ctypes.byref(uk))
+        if uk.value or total < 0 or total > cap:
+            return None
+        # 整体 decode 一次 → 按 C 输出的字符偏移切片 (flat 缓冲后半段是
+        # 每命中值区的 slack — 实体反义只缩不增, 无记录引用, 切片安全)
+        flat_str = ctypes.string_at(flat, total).decode("utf-8")
+        idx_np = np.frombuffer(idx, dtype="<i4").reshape(m, n, 4)
+        offs, lens = idx_np[:, :, 0], idx_np[:, :, 1]
+        coffs, clens = idx_np[:, :, 2], idx_np[:, :, 3]
+        pres = offs >= 0
+        n_pres = int(pres.sum())
+        out = [None] * m
+        if n_pres:
+            rows, cols = np.nonzero(pres)
+            vals = [flat_str[co:co + cl]
+                    for co, cl in zip(coffs[pres].tolist(),
+                                      clens[pres].tolist())]
+            rows_l = rows.tolist()
+            cols_l = cols.tolist()
+            d = None
+            prev = -1
+            for k in range(n_pres):
+                row = rows_l[k]
+                if row != prev:
+                    d = {}
+                    out[row] = d
+                    prev = row
+                d[anames[cols_l[k]]] = vals[k]
+        return out
+
+    def _pruned_root(data):
+        """C 扫描 → 目标标签剪枝树; 失败/空命中返回 None（调用方回退原版）。"""
+        from xml.etree import ElementTree as _ET
+        hits_buf, n_hits = _scan_hits(data)
+        if not n_hits:
+            return None
+        hits_np = np.frombuffer(hits_buf, dtype=_HIT_DTYPE, count=n_hits)
+        attr_list = [None] * n_hits
+        for ti, anames in enumerate(_TAG_ATTRS.values()):
+            if not anames:
+                continue
+            pos = np.nonzero(hits_np["tag_idx"] == ti)[0]
+            if len(pos) == 0:
+                continue
+            sub = _extract_attrs_flatten(data, hits_np, hits_buf, n_hits,
+                                         ti, pos, anames)
+            if sub is None:
+                return None
+            for i, d in zip(pos.tolist(), sub):
+                attr_list[i] = d
+        # 重建: 父子关系由 ce_xml_hit_parents C 前置计算（栈算法与 Python
+        # 原实现逐字一致, 见 ce_engine.c 文档; 实测 rebuild 1.79s → 0.45s）,
+        # Python 侧退化为单遍 Element 创建 + attrib 挂载 + 按父下标 append。
+        # attrib 经 el.attrib = d 挂载: C 构造器 Element(tag, d) 会逐元素
+        # PyDict_Copy, setter 直接引用 — 树等价
+        parents_arr = (ctypes.c_int32 * n_hits)()
+        tids_arr = (ctypes.c_int32 * n_hits)()
+        dll.ce_xml_hit_parents(hits_buf, n_hits, len(data), parents_arr,
+                               tids_arr)
+        parents = np.frombuffer(parents_arr, dtype="<i4",
+                                count=n_hits).tolist()
+        tids = np.frombuffer(tids_arr, dtype="<i4", count=n_hits).tolist()
+        els = [None] * n_hits
+        roots = []
+        for i in range(n_hits):
+            el = _ET.Element(_TAGS[tids[i]])
+            els[i] = el
+            d = attr_list[i]
+            if d:
+                el.attrib = d
+            p = parents[i]
+            if p >= 0:
+                els[p].append(el)
+            else:
+                roots.append(el)
+        root = _ET.Element("Syncronorm_ProjectFile")
+        root.extend(roots)
+        return root
+
+    # 树缓存 (单条目, 按 (path, mtime_ns, size) 键): read_depence_project_ext
+    # 内部会二次调用 _load_project_root — 二次 C 流水线 (scan+attrs+rebuild
+    # ~2.3s) 整体消除, ext 段 ≈ 纯生产解析。键含 mtime_ns+size, 文件改动即
+    # 失效; 仅 keys=None (未加密) 缓存 — 加密档密钥可变, 不缓存保正确。
+    # 生产解析函数对树只读 (无 attrib/text/结构改写), 缓存共享安全。
+    _tree_cache = {"key": None, "root": None}
+
+    def ce_load_project_root(path, keys):
+        """C 路径: zip/解密 → bytes → 剪枝树; 任何异常回退原版（字节不变）。"""
+        ck = None
+        if keys is None:
+            try:
+                st = os.stat(path)
+                ck = (path, st.st_mtime_ns, st.st_size)
+            except OSError:
+                ck = None
+            if ck is not None and _tree_cache["key"] == ck:
+                r = _tree_cache["root"]
+                if r is not None:
+                    _XML_IMPORT_CNT[0] += 1
+                    return r, []
+        try:
+            with _z.ZipFile(path) as z:
+                info = z.getinfo("project.xml")
+                encrypted = bool(info.flag_bits & 0x1)
+            if encrypted:
+                if keys is None:
+                    return orig_load(path, keys)
+                from src.ui.import_depence_sequences import _read_entry
+                data = _read_entry(path, "project.xml", keys)
+            else:
+                with _z.ZipFile(path) as z:
+                    data = z.read("project.xml")
+            if not data:
+                return orig_load(path, keys)
+            root = _pruned_root(data)
+            if root is None:
+                return orig_load(path, keys)
+            if ck is not None:
+                _tree_cache["key"] = ck
+                _tree_cache["root"] = root
+            _XML_IMPORT_CNT[0] += 1
+            return root, []
+        except Exception:
+            _CE_EXC_CNT[0] += 1   # H1: P5-XML C 内核异常 → 失败计数
+            return orig_load(path, keys)
+
+    _idep._load_project_root = ce_load_project_root
+    log.info("[CE] P5-XML 已接入: _load_project_root → ce_xml_scan_tags"
+             " + ce_xml_attrs_flatten 剪枝树重建（失败回退 ET, 字节不变）")
+
+
 def _hook_topview(engine):
     """T10: TopView 同步/编组纯数学段 → C 内核（ce_fuzz_sync 10 万 +
     ce_fuzz_topview 10.3 万次位级一致）。
@@ -5020,7 +5307,7 @@ def _hook_topview(engine):
     orig_spline_cluster = tp._spline_cluster_angles
 
     def ce_spline_cluster_angles(pts, splines, ordered, return_assign=False):
-        from src.ui.geometry_splines import spline_sample
+        from src.ui.depence_groups import spline_sample
         import numpy as _np
         out: dict = {}
         rest = list(ordered)
@@ -5162,7 +5449,7 @@ def _hook_topview(engine):
         ordered = [str(fid) for fid in ids or [] if str(fid) in valid]
         if not ordered:
             return _ret({})
-        # 位置优先用真实世界坐标（工程场地坐标，沿父链变换）——包内局部/画布
+        # 位置优先用真实世界坐标（DEPENCE 场地坐标，沿父链变换）——包内局部/画布
         # 坐标受包 RotY 旋转影响，切向方向会失真；world 缺失时回退画布坐标。
         # ★ 包锚点（2026-08-04 A1 终验补齐, 原版语义同步）：生产 targets = 包内
         #   基底电机 fid, 其 world 坐标含包内局部偏移（落叶头 73/73 台恒 9.4 单位）
@@ -5267,7 +5554,7 @@ def _hook_topview(engine):
         if len(ordered) == 1:
             return _ret(self._flip_sync_angles({ordered[0]: 0.0}, ordered))
 
-        # ★ 工程样条 = 均匀参数自然三次样条（2026-08-03 对拍 CreateSpline3D 行为
+        # ★ DEPENCE 样条 = 均匀参数自然三次样条（2026-08-03 反编译 CreateSpline3D
         #   + 120 台设备实测残差 ≤0.19 世界单位，即渲染弧线本身）：弧线重合时切向
         #   直接取渲染弧线解析导数；仍须检查与设备重合，不重合不用（退回设备
         #   定位点自拟合 Catmull-Rom）。
@@ -5294,7 +5581,7 @@ def _hook_topview(engine):
             #   只盖叶形样条一部分 → 页匹配空 → 旧路径回退全工程样条 → 错归属
             #   别的样条（V4 实测 37° 偏）。改按子集设备所属页的整页设备集匹配
             #   （各页取并集）, 仍空才回退全样条（防御）。
-            from src.ui.geometry_splines import match_splines_to_page
+            from src.ui.depence_groups import match_splines_to_page
             _matched = match_splines_to_page(point_list, _all_splines)
             if _matched:
                 _splines = _matched
@@ -6089,7 +6376,7 @@ def _hook_timeline_range(engine):
     （每帧 1 次 ctypes 调用覆盖 fetch+resolve+mix 全链）。
 
     接入点: PlaybackEngine._render_timeline_frame_range（:671-866; 生产版
-    probe_timeline_k2_bytecheck.py build_task_tables — 示例工程 7149 帧逐字节
+    probe_timeline_k2_bytecheck.py build_task_tables — TTM 7149 帧逐字节
     0 diff + probe_record_bytecheck.py record 子集同构）。语义:
       * 整段串行 [0, frame_count) 才走 C; 并行 worker 分段/越界段 → 原版。
       * 任务表与 _render_position 同源: _indexed_active_clip_items +
@@ -6236,7 +6523,7 @@ def _hook_timeline_range(engine):
         # ★ K2-2026-08-11: 构建期本地缓存 — 同一 (clip, u, track) 跨帧重复
         #   计算（_fade_tuple 全字段与 _compiled_clip_universe 均不依赖渲染
         #   时刻 pos; 锚/目标为引擎缓存返回的只读对象, C 表序列化只读值）。
-        #   示例工程 7149 帧 278503 任务行 → 实际唯一组合仅数百:
+        #   TTM 7149 帧 278503 任务行 → 实际唯一组合仅数百:
         #   _get_fade_in_anchor 177678 次(3.1s) + _compiled_clip_universe
         #   559178 次(3.5s) → 缓存后各 ~数百次。build 期间项目/轨道引用
         #   恒定, id() 安全; 引擎级缓存语义不变, 零逻辑差异。
@@ -6555,7 +6842,7 @@ def _hook_timeline_range(engine):
                     #   全表任务行索引（ti = 帧内局部行 = 全表 [n_tasks]）;
                     #   build_lt_bundle 对 scope None/empty 行 → scope_off=-1
                     #   （lt_path.py scope_of）。只传 LT 子集 → 束行数 < 全表
-                    #   → ti 越界读 → C 崩溃 → 整段回退 Python（示例工程 生产实测
+                    #   → ti 越界读 → C 崩溃 → 整段回退 Python（TTM 生产实测
                     #   38.7s ≈ 参考 39s）。全表收集 (clip,u,start_t) 与探针
                     #   frame_all_tasks 同源。
                     lt_frame_all.setdefault(idx, []).append(
@@ -8124,6 +8411,7 @@ def install():
         _hook_audio(engine)
         # T-recon2: MSA 结构分析纯数学段 → C（_on_frame 热路径深化）
         _hook_audio_msa(engine)
+        _hook_depence_xml(engine)
         # T10: TopView 同步/编组纯数学段 → C（同步角/编组 11382 台全选提速）
         _hook_topview(engine)
         # K2: 离线时间线整帧融合（QASCADE_CE_TIMELINE_RANGE=1, 2026-08-10 flip）

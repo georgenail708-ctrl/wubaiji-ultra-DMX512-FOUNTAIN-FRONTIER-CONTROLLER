@@ -16,7 +16,7 @@ from diskcache import Cache
 import numpy as np
 
 from .timeline_frame_writer import (
-    after_store_clear, cache_context, check_clear_owner, close_cache_connection, register_store,
+    after_store_clear, cache_context, check_batch_owner, check_clear_owner, close_cache_connection, register_store,
 )
 
 MEMORY_BUDGET = 32 * 1024 * 1024  # 播放帧/录制源各32MiB，独立预算。
@@ -112,6 +112,38 @@ class TimelineFrameStore(MutableMapping):
                 return self._memory[key]
             with cache_context(self) as cache:
                 return cache[key]
+
+    def write_batch(self, pairs):
+        """Stream an owned completed block using the original disk transaction.
+
+        Memory aliases and the spill prefix retain ordinary mapping semantics.
+        The remaining disk transaction rolls back values/count on failure; the
+        caller still owns complete-source validation and cache publication.
+        """
+        with self._lock:
+            check_batch_owner(self)
+            iterator = iter(pairs)
+            while self._disk is None:
+                try:
+                    key, value = next(iterator)
+                except StopIteration:
+                    return
+                self[key] = value
+            count = self._count
+            with cache_context(self) as cache:
+                try:
+                    with cache.transact():
+                        for key, value in iterator:
+                            self[key] = value
+                except BaseException:
+                    self._count = count
+                    self._clear_read_window()
+                    # DiskCache rolls back exceptions from its transaction body.
+                    # A COMMIT failure occurs after that body; close the actual
+                    # writer-thread connection so no uncertain transaction leaks
+                    # into a later block or temporary-directory cleanup.
+                    close_cache_connection(cache)
+                    raise
 
     def read_frame(self, key, default=None):
         """播放只读消费；批量短连接读取，不改变原可写 mapping API。"""

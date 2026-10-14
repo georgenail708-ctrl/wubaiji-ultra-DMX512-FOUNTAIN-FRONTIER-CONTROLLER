@@ -29,6 +29,11 @@ def stop_window_linker(window, *, clear_state: bool = False) -> bool:
 
 def shutdown_window_workers(window) -> None:
     """完成 bake→gen→引擎收尾，再收时间线、面板与音频所有者。"""
+    sntc_error = None
+    try:
+        _stop_if_present(getattr(window, "_sntc_bridge", None), "force_close")
+    except Exception as error:
+        sntc_error = error
     _stop_if_present(getattr(window, "_timeline_baker", None), "shutdown")
     engine = getattr(window, "_engine", None)
     _stop_if_present(engine, "stop_gen_thread")
@@ -53,3 +58,5 @@ def shutdown_window_workers(window) -> None:
         timer.stop()
     from ..engine.timeline_cache_lifecycle import retire_engine_frame_stores
     retire_engine_frame_stores(engine)
+    if sntc_error is not None:
+        raise sntc_error

@@ -110,6 +110,14 @@ def cache_context(store):
     return store._disk
 
 
+def check_batch_owner(store):
+    """Only the current actual scope and its registered store may batch IO."""
+    owner = store._writer_owner
+    if (type(owner) is not _FrameWriterScope or not _FrameWriterScope.is_current(owner)
+            or not any(registered is store for registered in owner.stores)):
+        raise RuntimeError("Frame batch requires its actual current registered writer")
+
+
 def check_clear_owner(store):
     owner = store._writer_owner
     if owner is not None and (owner.active or owner.failed) and threading.current_thread() is not owner.thread:

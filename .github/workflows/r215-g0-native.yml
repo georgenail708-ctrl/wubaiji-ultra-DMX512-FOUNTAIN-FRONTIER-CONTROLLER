@@ -1,0 +1,51 @@
+name: R215 bounded native grid and timecode
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tests/native/p10-g0-main06/**'
+      - 'tests/native/p10-g0-main07/**'
+      - 'tests/native/p10-tc1/**'
+      - 'tests/native/verify_g0_native.py'
+      - 'tools/ci/r215_g0_native.ps1'
+      - 'tests/native/r215_guard/**'
+      - '.github/workflows/r215-g0-native.yml'
+permissions:
+  contents: read
+concurrency:
+  group: r215-g0-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  native-grid:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    env:
+      PYTHONUTF8: '1'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install existing guard dependencies
+        run: python -m pip install psutil==7.2.2 filelock==3.29.7 pytest==9.1.1
+      - name: Guarded exact source native controls and ABI
+        shell: pwsh
+        run: |
+          $outputPath = Join-Path $env:GITHUB_WORKSPACE '.research_cache/r215/g0-hosted01'
+          python tests/native/r215_guard/run_validation_guarded.py --log .research_cache/r215/g0-hosted01/guard.log --max-gib 1.25 --min-free-gib 8 --min-commit-free-gib 8 --min-disk-free-gib 8 --max-processes 8 --max-log-mib 16 --timeout 180 -- pwsh -NoProfile -File tools/ci/r215_g0_native.ps1 -OutputPath $outputPath
+          exit $LASTEXITCODE
+      - name: Preserve raw native and owned resource evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r215-g0-source-and-outcome
+          path: .research_cache/r215/g0-hosted01/
+          if-no-files-found: error
+          retention-days: 14

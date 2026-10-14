@@ -2957,7 +2957,7 @@ class TrackLinkerEngine(QObject):
                 kind = str(getattr(ld, "kind", "") or "")
                 members = [str(m) for m in
                            (getattr(ld, "member_fixture_ids", []) or [])]
-            if kind != "package":
+            if kind not in ("package", "composite", "unit"):
                 continue
             if len(members) < 2:
                 continue

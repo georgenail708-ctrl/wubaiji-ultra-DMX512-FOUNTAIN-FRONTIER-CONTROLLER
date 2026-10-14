@@ -634,7 +634,7 @@ def classify_layout(points: List[Tuple[float, float]]) -> str:
             min_r = min((math.hypot(x - cx, y - cy) for x, y in points), default=0.0)
             span = _angular_span_deg(points, cx, cy)
             if span >= 25.0 and min_r >= max(5.0, radius * 0.35) and rms <= max(6.0, radius * 0.08):
-                return "circle" if (span >= 300.0 and n >= 4) else "arc"
+                return "circle" if ring_is_closed(points, (cx, cy)) else "arc"
 
     _vx, _vy, minor_major = _pca_axis(points)
     if minor_major <= 0.035:
@@ -847,18 +847,21 @@ def build_fit_shape(points: List[Tuple[float, float]]) -> Optional[dict]:
     # arc：start_angle 必须落在「最大间隙之后」的那台设备处，与 _angular_span_deg
     # 定位的间隙一致；否则当开口朝 +x（点跨 ±180°）时，渲染会从 angs[0]≈-180 顺时针
     # 扫过真实缺口、错过实际设备。环绕间隙的常态下退化为 angs[0]（保旧行为）。
-    angs = sorted(math.degrees(math.atan2(y - cy, x - cx)) for x, y in points)
-    span = _angular_span_deg(points, cx, cy)
-    if len(angs) >= 2:
-        gaps = [(angs[i + 1] - angs[i], i) for i in range(len(angs) - 1)]
-        gaps.append((angs[0] + 360.0 - angs[-1], len(angs) - 1))  # 环绕段
-        _, gi = max(gaps, key=lambda t: t[0])
-        start = angs[(gi + 1) % len(angs)]
-    else:
-        start = angs[0] if angs else 0.0
+    start, span = _arc_start_span(points, cx, cy)
     return {"id": _shape_id("arc", cx, cy, radius, start, span), "type": "circle",
             "cx": cx, "cy": cy, "rx": radius, "ry": radius, "angle": 0.0,
             "start_angle": start, "span_angle": span}
+
+
+def _arc_start_span(points, cx, cy):
+    """Occupied circular interval starts immediately after the largest empty gap."""
+    angles = sorted(math.degrees(math.atan2(y - cy, x - cx)) for x, y in points)
+    if len(angles) < 2:
+        return (angles[0] if angles else 0.0), 0.0
+    gaps = [(angles[(i + 1) % len(angles)] - angles[i]) % 360.0
+            for i in range(len(angles))]
+    index = max(range(len(gaps)), key=gaps.__getitem__)
+    return angles[(index + 1) % len(angles)], 360.0 - gaps[index]
 
 
 def _shape_id(kind: str, *coords: float) -> str:

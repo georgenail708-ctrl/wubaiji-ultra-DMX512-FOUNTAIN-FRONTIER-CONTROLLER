@@ -11810,7 +11810,9 @@ def _add_ungrouped_pages(ungrouped, out, ctx) -> None:
     for uname, umems in _refine_subpages_by_type([("未分组", ungrouped)], "未分组", fmap):
         lds, pkg_to_ld = build_package_lds(umems, resolver, fmap, guid_to_fid,
                                            DEFAULT_IMPORT_SCALE)
-        package_lds.extend(lds)
+        from .depence_groups import _dedupe_package_lds
+        from .fixture_import_semantics import logical_members
+        _dedupe_package_lds(lds, package_lds, {logical_members(ld) for ld in package_lds})
         spec = assemble_page(uname, umems, resolver, fmap, guid_to_fid,
                              DEFAULT_IMPORT_SCALE, fit_shapes_fn, pkg_to_ld)
         if spec is not None:
@@ -11916,8 +11918,10 @@ def _build_xy_gimbal_devices(ctx, project_root, chan_by_fid):
     guid_to_key, seq_to_fid, fix_by_id, composite_lds = ctx
     try:
         from .import_depence import detect_xy_axis_pairs
+        from .fixture_import_semantics import instance_identity_map
         pairs = detect_xy_axis_pairs(
-            guid_to_key, chan_by_fid, _collect_objects_by_guid(project_root))
+            instance_identity_map(guid_to_key, seq_to_fid, fix_by_id),
+            chan_by_fid, _collect_objects_by_guid(project_root))
         consumed = {str(m) for ld in (composite_lds or [])
                     for m in (ld.get("member_fixture_ids") or [])}
         # ★ 用**算好的 consumed 集合**重建 ctx —— 直接把外层 ctx 传进去的话，

@@ -594,7 +594,7 @@ def _hold_score_cap(clip, clip_start):
 
 
 
-#: 配套页类别段（与 `ui/geometry_splines.COMPANION_CATEGORY_SEGMENTS`、
+#: 配套页类别段（与 `ui/depence_groups.COMPANION_CATEGORY_SEGMENTS`、
 #: `ui/topview_panel._COMPANION_PAIRS` 同源语义；engine 不得 import src.ui，故各自实现）
 _COMPANION_CATS = ("设备包", "泵", "散台")
 
@@ -4307,8 +4307,19 @@ class PlaybackEngine(QObject):
             return
         t0 = time.perf_counter()
         render_now: Optional[float] = None
+        external_frame_adopted = False
         try:
+            from .timeline_external_clock import prepare_generator_frame
+            generator_plan = prepare_generator_frame(self, layer_name)
+            if generator_plan is not None:
+                if not generator_plan.render:
+                    # Skip before position/reset/cache/output mutations.
+                    # Original finally still returns ready/physical ownership.
+                    return
+                now = generator_plan.position
             now = render_timing_math.render_now(now)
+            from .timeline_external_clock import prepare_external_frame
+            now = prepare_external_frame(self, now, layer_name)
             render_now = now
             reset_consumption_on_rewind(self, now)
             self._position = now
@@ -4321,6 +4332,7 @@ class PlaybackEngine(QObject):
                 #   触发/注册（前瞻注册只需播放索引；索引缺失时自动跳过，
                 #   不影响任何输出字节）。
                 register_due_clips(self, now, (), _project_of(self))
+                external_frame_adopted = True
                 return
 
             proj = begin_audio_frame(self, _project_of(self), now, layer_name)
@@ -5028,6 +5040,7 @@ class PlaybackEngine(QObject):
             else:
                 self._clear_stale_timeline_layers(active_universes, layer_name=layer_name)
             self._flush_timeline_output_now(changed_universes, layer_name=layer_name)
+            external_frame_adopted = True
         finally:
             elapsed_ms = (time.perf_counter() - t0) * 1000.0
             if elapsed_ms >= self._perf_slow_render_ms:
@@ -5040,7 +5053,11 @@ class PlaybackEngine(QObject):
                     )
             if render_now is not None:
                 self._last_render_time = render_now
-            release_render_lock(self)
+            try:
+                from .timeline_external_clock import finish_external_frame
+                finish_external_frame(self, external_frame_adopted)
+            finally:
+                release_render_lock(self)
 
 
     def _lt_scope_for_universe(

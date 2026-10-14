@@ -1,0 +1,37 @@
+SOURCE-ONLY consumer context. Unapplied. ROOT must review/freeze the exact new
+Panel method and retained called suppliers in new CONSUMERS, then install the
+composed R02→R07 provider before creating owners.
+Never refresh the original source stamps or certify the unpatched old consumer
+as this successor. Apply R06 Panel._attach_train patch as its retained dependency.
+
+--- src/ui/route_animator/runner_panel.py
++++ src/ui/route_animator/runner_panel.py
+@@ RunnerPanel.add_train at1647
+         self._train_names[tid] = name
+         self._selected_train_id = tid
+-        self._engine.add_train(tid, 4, self._fallback_car_unit,
+-                               self._fallback_car_unit * 0.6,
+-                               self._default_base_speed(), color)
++        self._engine.add_train_materialized(
++            tid, (self._fallback_car_unit, self._default_base_speed(), color))
+         # 默认不自动挂到任何轨道: 由用户通过轨道选择器把火车放到目标轨道
+         self._build_train_card(tid)
+         self._refresh_card_selection()
+         return tid
+
+The original name/UUID/color index/selected ID/card calls and no automatic attach
+remain. Raw fallback-unit radius calculation executes in one RR_CREATE_PANEL
+report. Old v2 saved-scene/rebuild callers at2138/2234 keep their original public
+add_train dispatch; the reviewed replacements cover their real creation route.
+Their subsequent materialize, chain/runtime/switch/fleet calculations are pending.
+
+Engine add_train's existing list/tuple dispatch is unchanged. Exact replacements
+cover _Train.__init__, _add_train_v2 and _add_train_legacy. No new shape parser
+selects legacy from keyword-only path_points. Count clamping/world speed/defaults/
+legacy complete geometry and attach are one producer; no per-car native calls.
+Foreign legacy uses one counted original entry with qualified original ensure/
+attach lease companions. It is explicitly compatibility, never full CE.
+
+Normal Main Panel add/history/save/reopen/again Play/Effect/output/normal-close
+acceptance is UNRUN and must operate the actual patched consumer, not the seam
+method alone. No consumer patch or successor source is in the current product.

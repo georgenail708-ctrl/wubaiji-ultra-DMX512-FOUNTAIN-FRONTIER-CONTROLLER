@@ -393,6 +393,13 @@ class AudioRefTrack(QWidget):
             return False
 
     def set_playhead(self, pos: float):
+        from .sntc_reference_audio import reference_selected
+        if reference_selected(self):
+            self._waveform.set_playhead(pos)
+            return
+        self._set_playhead_local(pos)
+
+    def _set_playhead_local(self, pos: float):
         self._waveform.set_playhead(pos)
         if self._muted or not self._audio_path:
             return
@@ -430,6 +437,11 @@ class AudioRefTrack(QWidget):
             pass
 
     def play(self, pos: float = None):
+        from .sntc_reference_audio import reference_selected
+        if not reference_selected(self):
+            self._play_local(pos)
+
+    def _play_local(self, pos: float = None):
         """开始播放音频（按音频 clip 位置映射；clip 范围外由 set_playhead 补启动）"""
         self._transport_playing = True
         if self._muted or not self._audio_path:
@@ -452,6 +464,11 @@ class AudioRefTrack(QWidget):
             pass
 
     def pause(self):
+        from .sntc_reference_audio import reference_selected
+        if not reference_selected(self):
+            self._pause_local()
+
+    def _pause_local(self):
         """暂停播放"""
         self._transport_playing = False
         if self._player:
@@ -462,6 +479,11 @@ class AudioRefTrack(QWidget):
         self._play_started_at = 0.0
 
     def stop(self):
+        from .sntc_reference_audio import reference_selected
+        if not reference_selected(self):
+            self._stop_local()
+
+    def _stop_local(self):
         """停止播放"""
         self._transport_playing = False
         if self._player:
@@ -472,6 +494,11 @@ class AudioRefTrack(QWidget):
         self._play_started_at = 0.0
 
     def seek(self, pos: float):
+        from .sntc_reference_audio import reference_selected
+        if not reference_selected(self):
+            self._seek_local(pos)
+
+    def _seek_local(self, pos: float):
         """跳转到指定时间（映射到音频 clip 内位置，范围外不跳）"""
         if self._player:
             audio_pos = self._audio_time_at(pos)
@@ -611,7 +638,9 @@ class AudioRefTrack(QWidget):
             return
 
         # 停止播放
-        self.stop()
+        # Explicit source retirement still owns its player's stop, even while
+        # external transport is selected. It does not stop the DMX timeline.
+        self._stop_local()
         if self._player:
             try:
                 from PyQt6.QtCore import QUrl

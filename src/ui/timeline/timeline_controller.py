@@ -743,6 +743,10 @@ class TimelineController(QObject):
     # ══════════════════════════════════════════════════════════════════════════
 
     def play(self):
+        from .timeline_sntc_control import perform_local
+        return perform_local(self, '_play_local')
+
+    def _play_local(self):
         if self._playing:
             return
         self._playing = True
@@ -751,11 +755,24 @@ class TimelineController(QObject):
         self.playback_started.emit(self._play_pos)
 
     def pause(self):
+        from .timeline_sntc_control import perform_local
+        return perform_local(self, '_pause_local')
+
+    def _pause_local(self):
         self._playing = False
         self._timer.stop()
         self.playback_stopped.emit(self._play_pos)
 
     def stop(self):
+        from .timeline_sntc_control import perform_local
+        return perform_local(self, '_stop_local')
+
+    def stop_for_release(self):
+        from .timeline_sntc_control import release_external
+        release_external(self)
+        self._stop_local()
+
+    def _stop_local(self):
         self._playing = False
         self._play_pos = 0.0
         self._timer.stop()
@@ -767,6 +784,10 @@ class TimelineController(QObject):
         self.playback_tick_tier2.emit(0.0)
 
     def seek(self, pos: float):
+        from .timeline_sntc_control import perform_local
+        return perform_local(self, '_seek_local', pos)
+
+    def _seek_local(self, pos: float):
         self._play_pos = max(0.0, pos)
         if self._playing:
             self._play_t0 = time.monotonic() - self._play_pos
@@ -815,6 +836,11 @@ class TimelineController(QObject):
                 bool(self._loop_enabled))
 
     def _on_tick(self):
+        from .timeline_sntc_control import external_tick
+        if not external_tick(self):
+            self._on_tick_local()
+
+    def _on_tick_local(self):
         self._play_pos = time.monotonic() - self._play_t0
         if self._loop_enabled and self._play_pos >= self._loop_end:
             self.seek(self._loop_start)

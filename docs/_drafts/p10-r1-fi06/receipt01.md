@@ -1,0 +1,7 @@
+# FI06 static handoff receipt
+
+Read-ready private component only. No product/candidate06_D/old source/EXPECTED/oracle/index changed. No helper, Python, AST, hash, import, Qt/native, collection/test, build or render ran. No PID/software process was started.
+
+Core: actual cross-track predecessor C compile, original endpoint scoring/shared anchor update, exact first getter/prewarm event boundaries, separate normal/causal caches, revision/dependency retention, precharged owning native history. Genuine schema successor: complete original payload/contexts/proof/anchor/deps IO, iterative native tagged-tree equality including exact integer/float behavior, original empty-snapshot source-geometry exception, retaining unmatched rows until an actual getter commit, structural native-result projection. Independent raw C assertions and sixteen assembled original-semantics cases are written but UNRUN.
+
+CE agent supplies unfinished fixed r6_transition_sample, r6_output_domain and r6_fi_current_context. The full ready/static/filter/layout/motor/permit context trees must originate in its actual native compiler. No old Python math helper result may be relabelled native. Genuine source-owner/token rebinding, owning change records/block wiring, installed raw binder, whole-workflow RAM peak and original full-output/state acceptance remain pending. No pending flag is cleared by this component, no PASS/10s/gain/all-CE claim is made.

@@ -239,6 +239,28 @@ def make_discovery_socket(bind_ip: str = "0.0.0.0") -> socket.socket:
     return s
 
 
+def make_sntc_input_socket(bind_ip: str = "0.0.0.0", port: int = 8405,
+                           timeout: float = 0.1) -> socket.socket:
+    """Owned SNTC input, independent of the Art-Net/sACN output enable state.
+
+    The caller closes the returned socket. Do not reuse a bound input port: a
+    second listener must report bind failure instead of stealing datagrams.
+    Receive callers use recvfrom(17) to reject packets larger than the 16-byte
+    SNTC protocol. This is the existing project's socket-factory boundary.
+    """
+    if port != 8405 or not 0.01 <= timeout <= 0.5:
+        raise ValueError("SNTC input requires port 8405 and a bounded timeout")
+    owned = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        owned.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 64 * 1024)
+        owned.settimeout(timeout)
+        owned.bind((bind_ip or "0.0.0.0", port))
+    except BaseException:
+        owned.close()
+        raise
+    return owned
+
+
 class ArtNetReceiver(QObject):
     """Art-Net 接收器"""
     frame_received = pyqtSignal(int, object)
@@ -426,7 +448,7 @@ class ArtNetSender(QObject):
         return buf
 
     def _next_seq(self, universe: int) -> int:
-        """该域下一个 ArtDMX 序列号：1..255 自增回绕（packetizer
+        """该域下一个 ArtDMX 序列号：1..255 自增回绕（QLC+ packetizer
         :155-158 等价算术式）；0 永不产生（规范保留值）。"""
         self._seqs[universe] = nxt = self._seqs.get(universe, 0) % 255 + 1
         return nxt

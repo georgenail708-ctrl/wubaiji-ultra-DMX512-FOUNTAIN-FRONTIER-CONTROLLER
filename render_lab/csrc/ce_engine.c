@@ -6334,10 +6334,10 @@ CE_API void ce_interlock_process(
     }
 }
 /* ═══════════════════════════════════════════════════════════════════
- * T7: 工程 XML 快速扫描（工程包 → project.xml 字节扫描）
+ * T7: DEPENCE 工程 XML 快速扫描（.depence → project.xml 字节扫描）
  * ───────────────────────────────────────────────────────────────────
  * 背景: 真实大工程 project.xml 解压后 149.6MB / 72 万元素（至冬7.0,
- *   11382 台设备）。src/ui 工程导入现路径 = ET.fromstring
+ *   11382 台设备）。src/ui/import_depence.py 现路径 = ET.fromstring
  *   建树 7.6s + Python 树遍历 7.6s（合计约 15.5s）。本内核单遍字节
  *   扫描直接产出解析所需的 (tag, attr) 值区间，跳过建树与树遍历。
  *
@@ -7281,7 +7281,7 @@ CE_API int ce_joystick_axis(double raw, double deadzone, int invert,
 /* ══════════════════════════════════════════════════════════════════════
  * P5-XML: 工程 XML 标签快速扫描 (2026-08-03 探索, 未接 hook)
  *
- * 动机: src/ui 工程导入用 xml.etree.ElementTree 解析大工程
+ * 动机: src/ui/import_depence.py 用 xml.etree.ElementTree 解析大工程
  *       project.xml (至冬7.0 实测 157MB / 720,828 个开标签), ET.parse
  *       单步 ~4.9s 是导入主瓶颈。本组内核做 C 级单遍扫描:
  *         1) ce_xml_scan_tags   — 找出目标标签的全部开标签命中, 输出
@@ -7289,7 +7289,7 @@ CE_API int ce_joystick_axis(double raw, double deadzone, int invert,
  *            在闭标签处回填每个命中元素的结束偏移 (自闭合 elem_end==span_end)。
  *         2) ce_xml_attrs_batch — 对一批命中 (开标签跨度) 批量提取属性值的
  *            原始字节区间 (缺失 val_off=-1; 值含 '&' 置 has_entity=1,
- *            Python 侧按 XML 实体反义 —— 实测工程 XML 0 次出现)。
+ *            Python 侧按 XML 实体反义 —— 实测 DEPENCE 工程 0 次出现)。
  *       Python 侧据此重建"目标标签剪枝树"再喂给现有解析函数, 语义零改动;
  *       基准与一致性对拍见 render_lab/bench/ce_bench_xml.py。
  *
@@ -9223,7 +9223,7 @@ CE_API void ce_merge_max(const int64_t* unit_orig, const int64_t* unit_chan,
     }
 }
 /* ═══════════════════════════════════════════════════════════════════
- * T8: 工程对象构建热路径 — _ln/_at 批量内核（对齐 src/ui 工程导入）
+ * T8: DEPENCE 对象构建热路径 — _ln/_at 批量内核（对齐 src/ui/import_depence.py）
  * ───────────────────────────────────────────────────────────────────
  * 背景: 至冬7.0 工程解析 15.5s = ET 建树 7.6s + Python 对象构建 7.6s。
  *   建树已由 ce_xml_scan (T7) 替代（380ms）。本组内核替代对象构建的
@@ -10566,18 +10566,18 @@ CE_API int ce_voice_texture_cap(int n_voices, double e, int is_drop)
     return (r > 1) ? (int)r : 1;
 }
 /* ── T10: 同步模式几何内核（对齐 src/ui/topview_panel.py _compute_xy_reference_angles
- *       + src/ui/geometry_splines.py spline_param/spline_sample）────────────
+ *       + src/ui/depence_groups.py spline_param/spline_sample）────────────
  *
  * 同步基准角链路（2026-08-03 记忆: 弯折弧线同步基准角/切向角计算）:
  *   1. spline_param — 设备在样条折线上的参数位置 t∈[0,1]（最近线段投影,
- *      geometry_splines.spline_param :495, topview_panel._spline_order_ts :2291
+ *      depence_groups.spline_param :495, topview_panel._spline_order_ts :2291
  *      numpy 批量版声明与标量逐位等价, 本内核实现标量语义）;
  *   2. Catmull-Rom 弦长参数化导数 — topview_panel._catmull_rom_tangent :541
  *      （内部点中心差分/端点单向差分/闭合回绕; 归一化用 math.hypot）;
  *   3. ce_sync_tangent_angles — 回退路径整链 :2964-:2981（弦长累积 ts +
  *      逐台切向 + normalize(-degrees(atan2)) + RotY [-90,90] 翻转）;
- *   4. ce_spline_sample — 均匀参数自然三次样条采样+解析切向
- *      （geometry_splines.spline_sample :238; Thomas 追赶法 + 每段 per_seg
+ *   4. ce_spline_sample — DEPENCE TSpline3D 均匀自然三次样条采样+解析切向
+ *      （depence_groups.spline_sample :238; Thomas 追赶法 + 每段 per_seg
  *      插值点, 线性/闭合折线分支 = 边方向角）;
  *   5. ce_sync_angle_from_tangent — 切向→同步角公共段（邻域点积翻转 +
  *      角度归一 + 可选 RotY 翻转; _spline_cluster_angles 阶段2 :508-:534
@@ -10697,7 +10697,7 @@ static double ce_py_pow2(double x)
     return pow(x, 2.0);   /* 兜底（Python 进程内 ucrtbase 恒已加载, 不触发） */
 }
 
-/* ── T10a: 折线投影参数 t∈[0,1]（geometry_splines.spline_param :495-:518）───
+/* ── T10a: 折线投影参数 t∈[0,1]（depence_groups.spline_param :495-:518）───
  *
  * cp 交错 (x0,z0,x1,z1,...), n_cp ≥ 1; 退化段 seg2<=1e-12 跳过;
  * t = ((x-ax)*vx + (z-az)*vz)/seg2 → clamp[0,1]（min 先做, 同 Python）;
@@ -10787,7 +10787,7 @@ CE_API void ce_catmull_rom_tangent(const double* pts, const double* ts,
  *
  * 输入 pts 为已排好序的设备定位点（排序/闭合判定 = 调用方 numpy/UI 逻辑）;
  * ts[0]=0, ts[k]=ts[k-1]+hypot(相邻差) 逐点累积; 每台取 Catmull-Rom 切向,
- * 角 = normalize(-degrees(atan2(dy,dx))), 再按工程 RotY 恒在 [-90,90]
+ * 角 = normalize(-degrees(atan2(dy,dx))), 再按 DEPENCE RotY 恒在 [-90,90]
  * 翻转 180°。n=1 时数学路径自然给出 0.0（与调用方早退 {fid:0.0} 一致）。
  */
 CE_API void ce_sync_tangent_angles(const double* pts, int n, int closed,
@@ -10818,13 +10818,13 @@ CE_API void ce_sync_tangent_angles(const double* pts, int n, int closed,
     free(ts);
 }
 
-/* ── T10d: 样条采样（geometry_splines.spline_sample :238-:355）────────
+/* ── T10d: DEPENCE 样条采样（depence_groups.spline_sample :238-:355）────────
  *
  * cp 交错控制点 (x,z); mode: 0=linear(折线, 切向=边方向角), 1=cubic(均匀自然
  * 三次样条); 首尾重合(<1e-6)自动走 linear（同 Python 闭合折线分支）。
  * 输出容量: n_cp<2 → n_cp; 否则 (n_cp-1)*per_seg+1（out_xy 交错 n_out*2）。
  * 返回实际采样点数; 分配失败返回 0（合法输出恒 ≥1, 调用方以此回退）。
- * x==0.0 控制点替换 0.0001（参考实现同, 替换先于闭合判定）。
+ * x==0.0 控制点替换 0.0001（DEPENCE 同, 替换先于闭合判定）。
  */
 static int ce_spline_sample_linear(const double* pts, int n_cp, int per_seg,
                                    double* out_xy, double* out_ang)
@@ -10973,7 +10973,7 @@ CE_API int ce_spline_sample(const double* cp, int n_cp, int per_seg, int mode,
     for (i = 0; i < n_cp; i++) {
         double x = cp[2 * i];
         if (x == 0.0)
-            x = 0.0001;                  /* 同参考实现: x==0 强制 0.0001 */
+            x = 0.0001;                  /* DEPENCE 同: x==0 强制 0.0001 */
         pts[2 * i] = x;
         pts[2 * i + 1] = cp[2 * i + 1];
     }
@@ -11166,7 +11166,7 @@ CE_API void ce_color_gradient_effect(
     for (int i = 0; i < n; i++) {
         double r, g, bl;
         switch (kind) {
-        case 0: {  /* rainbow: 渐变彩虹 */
+        case 0: {  /* rainbow: Depence 风格渐变彩虹 */
             double hue = _ce_mod_div((double)i / (double)n * p[0] + t * speed, 1.0);
             double h = hue * 6.0;
             double c = p[1] * p[2];
@@ -15942,3 +15942,12 @@ static int ce_render_clip_frame_lt(
 
 #include "ce_lt_prepare_types.inc"
 #include "ce_lt_prepare_api.inc"
+
+/* SNTC input state shares this CE DLL; no separate numerical process. */
+#include "ce_sntc_v1_types.inc"
+#include "ce_sntc_v1_api.inc"
+#include "ce_sntc_consumer_v1.inc"
+#include "ce_sntc_local_clock_v1.inc"
+#include "ce_sntc_media_v1_types.inc"
+#include "ce_sntc_media_v1_api.inc"
+#include "ce_sntc_reference_policy_v1.inc"
